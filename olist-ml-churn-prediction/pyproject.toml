@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "olist_churn_prediction"
+version = "0.1.0"
+description = "churn prediction on olist dataset universal package"
+authors = [{ name = "Vyacheslav Timofeev", email = "timofeev.ds.ml@gmail.com" }]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+
+dependencies = [
+  "pandas>=2.2,<3.0",
+  "scikit-learn>=1.5",
+  "xgboost>=2.0.0",
+  "pyarrow",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "black", "mypy", "pre-commit"]
+viz = ["matplotlib", "seaborn", "jupyterlab"]
+
+[project.scripts]
+ml-train = "my_ml_project.models.train:main"
+ml-predict = "my_ml_project.models.predict:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+package-data = { "olist_churn_prediction" = ["data/*.csv"] }
