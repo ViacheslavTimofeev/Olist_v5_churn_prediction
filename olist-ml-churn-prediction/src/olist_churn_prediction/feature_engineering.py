@@ -21,27 +21,26 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-def _split_schema_fields(schema: Type[BaseModel]):
+def _split_schema_fields(schema):
     """Возвращает (date_cols, dtype_map) из Pydantic-схемы."""
-    date_cols: list[str] = []
-    dtype_map: dict[str, str] = {}
+    date_cols, dtypes = [], {}
 
-    for name, field in schema.model_fields.items():            # Pydantic v2
-        ann = field.annotation
-        # Проверяем на datetime | Optional[datetime]
-        if ann is datetime or (get_origin(ann) is Union and datetime in get_args(ann)):
+    for name, field in schema.model_fields.items():      # Pydantic v2 API
+        anno = field.annotation                          # исходная аннотация
+        # 1️⃣  «разворачиваем» Optional[T]  →  T
+        if get_origin(anno) is Optional:
+            anno = get_args(anno)[0]
+        # 2️⃣  теперь проверяем базовый тип
+        if anno is datetime or (get_origin(anno) is Union and datetime in get_args(anno)):
             date_cols.append(name)
-        else:
-            # Подбираем минимальный совместимый dtype
-            if ann is str:
-                dtype_map[name] = "string"
-            elif ann in (float, Optional[float]):              # float64 по умолчанию
-                dtype_map[name] = "float32"
-            elif ann in (int, Optional[int]):
-                dtype_map[name] = "int64"
-            # остальные типы (bool, category…) оставляем pandas'у
+        elif anno is str:
+            dtypes[name] = "string"      # всегда строковый dtype, даже с <NA>
+        elif anno is float:
+            dtypes[name] = "float32"
+        elif anno is int:
+            dtypes[name] = "Int64"       # nullable целые
 
-    return date_cols, dtype_map
+    return date_cols, dtypes
 
 
 def load_data(path: str | Path,

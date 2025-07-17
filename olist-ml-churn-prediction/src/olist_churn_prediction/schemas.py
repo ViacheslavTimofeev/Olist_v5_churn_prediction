@@ -1,8 +1,28 @@
+from __future__ import annotations
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+import math
+import pandas as pd
 
-class SellersSchema(BaseModel):
+class _NaN2NoneMixin(BaseModel):
+    """Добавьте этот миксин в любую модель — и NaN превратится в None."""
+    # ⬇︎ сработает для КАЖДОГО поля (строка *, mode='before')
+    @field_validator("*", mode="before")
+    @classmethod
+    def _nan_to_none(cls, v):
+        # пропускаем настоящие None
+        if v is None:
+            return v
+        # numpy.nan / float('nan')
+        if isinstance(v, float) and math.isnan(v):
+            return None
+        # pandas NA / NaT
+        if pd.isna(v):
+            return None
+        return v
+
+class SellersSchema(_NaN2NoneMixin):
     order_id: str
     product_id: str
     seller_id: str
@@ -10,25 +30,25 @@ class SellersSchema(BaseModel):
     seller_city: str
     seller_state: str
 
-class MeasuresSchema(BaseModel):
+class MeasuresSchema(_NaN2NoneMixin):
     product_id: str
     product_weight_g: float
     product_length_cm: float
     product_height_cm: float
     product_width_cm: float
 
-class TranslationSchema(BaseModel):
+class TranslationSchema(_NaN2NoneMixin):
     product_category_name: str
     product_category_name_english: str
 
-class PaymentsSchema(BaseModel):
+class PaymentsSchema(_NaN2NoneMixin):
     order_id: str
     installments: int
     sequential: int
-    payment_type: int
-    value: int
+    payment_type: str
+    value: float
 
-class MainPublicSchema(BaseModel):
+class MainPublicSchema(_NaN2NoneMixin):
     order_id: str
     order_status: str
     order_products_value: float
@@ -55,19 +75,19 @@ class MainPublicSchema(BaseModel):
     review_creation_date: Optional[datetime] = Field(default=None)
     review_answer_timestamp: Optional[datetime] = Field(default=None)
 
-class CustomersSchema(BaseModel):
+class CustomersSchema(_NaN2NoneMixin):
     customer_id: str
     customer_unique_id: str
 
-class GeolocationSchema(BaseModel):
+class GeolocationSchema(_NaN2NoneMixin):
     zip_code_prefix: int
     city: str
     state: str
     lat: float
     lng: float
 
-class MainClassifiedSchema(BaseModel):
-    id: str
+class MainClassifiedSchema(_NaN2NoneMixin):
+    id: int
     order_status: str
     order_products_value: float
     order_freight_value: float
@@ -79,24 +99,24 @@ class MainClassifiedSchema(BaseModel):
     order_delivered_customer_date: Optional[datetime] = Field(default=None)
     customer_city: str
     customer_state: str
-    customer_zip_code_prefix: int
+    customer_zip_code_prefix: str
     product_category_name: str
     product_name_lenght: int
     product_description_lenght: int
     product_photos_qty: int
     review_score: int
-    review_comment_title: str
+    review_comment_title: Optional[str] = Field(default=None)
     review_comment_message: str
     review_creation_date: Optional[datetime] = Field(default=None)
     review_answer_timestamp: Optional[datetime] = Field(default=None)
-    votes_before_estimate: int
-    votes_delayed: int
-    votes_low_quality: int
-    votes_return: int
-    votes_not_as_anounced: int
-    votes_partial_delivery: int
-    votes_other_delivery: int
-    votes_other_order: int
-    votes_satisfied: int
-    most_voted_subclass: str
-    most_voted_class: str
+    votes_before_estimate: Optional[int] = Field(default=None)
+    votes_delayed: Optional[int] = Field(default=None)
+    votes_low_quality: Optional[int] = Field(default=None)
+    votes_return: Optional[int] = Field(default=None)
+    votes_not_as_anounced: Optional[int] = Field(default=None)
+    votes_partial_delivery: Optional[int] = Field(default=None)
+    votes_other_delivery: Optional[int] = Field(default=None)
+    votes_other_order: Optional[int] = Field(default=None)
+    votes_satisfied: Optional[int] = Field(default=None)
+    most_voted_subclass: Optional[str] = Field(default=None)
+    most_voted_class: Optional[str] = Field(default=None)
