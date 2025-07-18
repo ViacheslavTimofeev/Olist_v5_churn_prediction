@@ -22,9 +22,9 @@ dependencies = [
 dev = ["pytest", "black", "mypy", "pre-commit"]
 viz = ["matplotlib", "seaborn", "jupyterlab"]
 
-[project.scripts]
-ml-train = "my_ml_project.models.train:main"
-ml-predict = "my_ml_project.models.predict:main"
+#[project.scripts]
+#ml-train = "my_ml_project.models.train:main"
+#ml-predict = "my_ml_project.models.predict:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
