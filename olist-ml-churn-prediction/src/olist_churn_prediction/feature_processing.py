@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Type, get_origin, get_args, Union, Optional
+from typing import Type, get_origin, get_args, Union, Optional, Dict, List, Callable, Iterable
 from pydantic import BaseModel, ValidationError
 import argparse
 import logging
@@ -12,6 +12,11 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+
+from typing import Dict, List, Callable, Union, Iterable
+import pandas as pd
+import itertools
 
 from pandas.api.types import (
     is_string_dtype,
@@ -254,3 +259,122 @@ def disambiguate_city_state(
             target.loc[mask, city_col] = new_name
 
     return target
+
+
+NumericAgg = Union[str, Callable[[pd.Series], float]]
+
+def _to_list(obj: Union[str, List[str]]) -> List[str]:
+    return [obj] if isinstance(obj, str) else list(obj)
+
+
+def group_by_features(
+    df: pd.DataFrame,
+    group_mapping: Dict[str, Union[str, List[str]]],
+    agg_funcs: Union[Dict[str, NumericAgg], List[NumericAgg], NumericAgg] = "sum",
+    keep_original: bool = False,
+    prefix: str | None = None,
+) -> pd.DataFrame:
+    '''Автоматизирует создание новых признаков путём агрегирования (группировки)
+    заданного набора колонок.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Входной датафрейм.
+    group_mapping : dict
+        Отображение {'новый_признак': ['col1','col2', ...]}.
+    agg_funcs : dict | list | str | callable, default "sum"
+        Функции агрегирования:
+            * одна строка/функция — применяется ко всем группам;
+            * список — позиционно для каждого ключа group_mapping;
+            * словарь — {'новый_признак': 'mean'}.
+    keep_original : bool, default False
+        Если True сохранит исходные колонки.
+    prefix : str | None, optional
+        Префикс для итоговых колонок, удобно для стэкинга в конвейере.
+    Returns
+    -------
+    pd.DataFrame
+        Датафрейм со сгенерированными колонками.
+    '''
+    df_out = df.copy()
+
+    # Нормализуем agg_funcs к словарю
+    if isinstance(agg_funcs, (str, Callable)):
+        agg_funcs = {k: agg_funcs for k in group_mapping}
+    elif isinstance(agg_funcs, list):
+        if len(agg_funcs) != len(group_mapping):
+            raise ValueError("Длина agg_funcs не совпадает с group_mapping")
+        agg_funcs = dict(zip(group_mapping, agg_funcs))
+    elif isinstance(agg_funcs, dict):
+        missing = set(group_mapping) - set(agg_funcs)
+        if missing:
+            raise ValueError(f"Для групп {missing} не указаны функции агрегации")
+    else:
+        raise TypeError("agg_funcs должен быть str, callable, list или dict")
+
+    new_cols = {}
+    for new_feat, cols in group_mapping.items():
+        cols_list = _to_list(cols)
+        agg_fn = agg_funcs[new_feat]
+        new_name = f"{prefix}_{new_feat}" if prefix else new_feat
+        new_cols[new_name] = df_out[cols_list].aggregate(agg_fn, axis=1)
+
+    # Удаляем оригинальные колонки, если нужно
+    if not keep_original:
+        cols_to_drop: Iterable[str] = set(
+            itertools.chain.from_iterable(_to_list(v) for v in group_mapping.values())
+        )
+        df_out = df_out.drop(columns=list(cols_to_drop))
+
+    # Добавляем новые
+    df_out = pd.concat([df_out, pd.DataFrame(new_cols, index=df.index)], axis=1)
+    return df_out
+
+
+class FeatureGrouper:
+    '''
+    Обёртка, совместимая со Scikit-Learn API (fit/transform).
+    Позволяет легко подключать группировку в Pipeline/ColumnTransformer.
+
+    Пример
+    ------
+    >>> grouper = FeatureGrouper(mapping, agg_funcs='sum')
+    >>> X_new = grouper.fit_transform(X)
+    '''
+
+    def __init__(
+        self,
+        group_mapping: Dict[str, Union[str, List[str]]],
+        agg_funcs: Union[Dict[str, NumericAgg], List[NumericAgg], NumericAgg] = "sum",
+        keep_original: bool = False,
+        prefix: str | None = None,
+    ):
+        self.group_mapping = group_mapping
+        self.agg_funcs = agg_funcs
+        self.keep_original = keep_original
+        self.prefix = prefix
+
+    def fit(self, X: pd.DataFrame, y=None):
+        # Ничего обучать не нужно
+        return self
+
+    def transform(self, X: pd.DataFrame):
+        return group_by_features(
+            X,
+            self.group_mapping,
+            agg_funcs=self.agg_funcs,
+            keep_original=self.keep_original,
+            prefix=self.prefix,
+        )
+
+    def get_feature_names_out(self, input_features=None):
+        prefix = f"{self.prefix}_" if self.prefix else ""
+        return [f"{prefix}{name}" for name in self.group_mapping]
+
+
+# ---------------------- Планы на будущее ----------------------
+# 1. Конфигурация через YAML/JSON.
+# 2. Поддержка категориальных агрегаций (mode, first, any).
+# 3. Версия на polars/dask для больших данных.
+# 4. Добавить integration tests в /tests.
