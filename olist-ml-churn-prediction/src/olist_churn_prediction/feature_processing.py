@@ -13,9 +13,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-
-from typing import Dict, List, Callable, Union, Iterable
-import pandas as pd
 import itertools
 
 from pandas.api.types import (

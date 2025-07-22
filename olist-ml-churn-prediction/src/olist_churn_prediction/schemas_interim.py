@@ -43,8 +43,12 @@ class PaymentsSchemaInterim(PaymentsSchemaRaw):
         extra="forbid")
 
 class MainPublicSchemaInterim(MainPublicSchemaRaw):
-    """Interim schema – currently identical to raw, but ready for extension."""
-    pass
+    product_category_name: Optional[str] = Field(default=None, exclude=True, repr=False)
+    product_category_name_english: Optional[str] = Field(default=None)
+    order_sellers_qty: Optional[int] = Field(default=None, exclude=True, repr=False)
+    review_comment_title: Optional[str] = Field(default=None, exclude=True, repr=False)
+    order_status: Optional[str] = Field(default=None, exclude=True, repr=False)
+    
     model_config = ConfigDict(
         dataframe_mode="series",
         extra="forbid")
@@ -64,7 +68,7 @@ class GeolocationSchemaInterim(GeolocationSchemaRaw):
         extra="forbid")
 
 class MainClassifiedSchemaInterim(MainClassifiedSchemaRaw):
-    product_category_name_english: Optional[str] = Field(default=None) # новый признак    
+    product_category_name_english: Optional[str] = Field(default=None) # новый признак
     id: Optional[int] = Field(default=None, exclude=True, repr=False) # удаленные признаки
     order_sellers_qty: Optional[int] = Field(default=None, exclude=True, repr=False)
     product_category_name: Optional[str] = Field(default=None, exclude=True, repr=False)

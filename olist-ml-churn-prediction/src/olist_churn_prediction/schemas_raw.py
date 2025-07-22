@@ -86,8 +86,8 @@ class MainPublicSchemaRaw(_NaN2NoneMixin):
     product_id: str
     review_id: str
     review_score: int
-    review_comment_title: str
-    review_comment_message: str
+    review_comment_title: Optional[str] = Field(default=None)
+    review_comment_message: Optional[str] = Field(default=None)
     review_creation_date: Optional[datetime] = Field(default=None)
     review_answer_timestamp: Optional[datetime] = Field(default=None)
     

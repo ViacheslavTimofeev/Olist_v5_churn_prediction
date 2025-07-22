@@ -33,7 +33,7 @@ class DateDiffTransformer(BaseEstimator, TransformerMixin):
 
     def transform(self, X):
         X = X.copy()
-        X[self.new_col] = (X[self.end_col] - X[self.start_col]).dt.days
+        X[self.new_col] = ((X[self.end_col] - X[self.start_col]).dt.total_seconds() // 3600).astype(int)
         return X[[self.new_col]]
 
 
