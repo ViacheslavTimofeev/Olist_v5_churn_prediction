@@ -30,10 +30,10 @@ def _split_schema_fields(schema):
 
     for name, field in schema.model_fields.items():      # Pydantic v2 API
         anno = field.annotation                          # исходная аннотация
-        # 1️⃣  «разворачиваем» Optional[T]  →  T
+        # 1. «разворачиваем» Optional[T]  →  T
         if get_origin(anno) is Optional:
             anno = get_args(anno)[0]
-        # 2️⃣  теперь проверяем базовый тип
+        # 2️. теперь проверяем базовый тип
         if anno is datetime or (get_origin(anno) is Union and datetime in get_args(anno)):
             date_cols.append(name)
         elif anno is str:

@@ -67,7 +67,7 @@ class GeolocationSchemaInterim(GeolocationSchemaRaw):
     model_config = ConfigDict(
         dataframe_mode="series",
         extra="forbid")
-
+'''
 class MainClassifiedSchemaInterim(MainClassifiedSchemaRaw):
     product_category_name_english: Optional[str] = Field(default=None) # новый
     id: Optional[int] = Field(default=None, exclude=True, repr=False) # удален
@@ -78,7 +78,7 @@ class MainClassifiedSchemaInterim(MainClassifiedSchemaRaw):
     model_config = ConfigDict(
         dataframe_mode="series",
         extra="forbid")
-
+'''
 class MergedDfSchemaInterim(_NaN2NoneMixin):
     order_id: str
     order_status: Optional[str] = Field(default=None, exclude=True, repr=False) # удален
