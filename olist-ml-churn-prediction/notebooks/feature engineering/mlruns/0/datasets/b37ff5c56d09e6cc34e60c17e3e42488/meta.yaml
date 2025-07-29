@@ -1,0 +1,22 @@
+digest: fbbacec6
+name: dataset
+profile: '{"num_rows": 60084, "num_elements": 1141596}'
+schema: '{"mlflow_colspec": [{"type": "float", "name": "order_products_value", "required":
+  true}, {"type": "float", "name": "order_freight_value", "required": true}, {"type":
+  "long", "name": "order_items_qty", "required": true}, {"type": "long", "name": "product_photos_qty",
+  "required": true}, {"type": "double", "name": "product_name_length", "required":
+  true}, {"type": "double", "name": "product_description_length", "required": true},
+  {"type": "string", "name": "customer_state", "required": true}, {"type": "long",
+  "name": "review_score", "required": true}, {"type": "float", "name": "summary_payments_value",
+  "required": true}, {"type": "long", "name": "installments", "required": true}, {"type":
+  "long", "name": "sequential", "required": true}, {"type": "float", "name": "product_weight_g",
+  "required": true}, {"type": "float", "name": "product_length_cm", "required": true},
+  {"type": "float", "name": "product_height_cm", "required": true}, {"type": "float",
+  "name": "product_width_cm", "required": true}, {"type": "string", "name": "seller_state",
+  "required": true}, {"type": "double", "name": "customer_city_te", "required": true},
+  {"type": "double", "name": "seller_city_te", "required": true}, {"type": "double",
+  "name": "product_category_name_english_te", "required": true}]}'
+source: '{"tags": {"mlflow.user": "\u0412\u044f\u0447\u0435\u0441\u043b\u0430\u0432",
+  "mlflow.source.name": "C:\\anaconda\\envs\\olist-ml\\Lib\\site-packages\\ipykernel_launcher.py",
+  "mlflow.source.type": "LOCAL"}}'
+source_type: code

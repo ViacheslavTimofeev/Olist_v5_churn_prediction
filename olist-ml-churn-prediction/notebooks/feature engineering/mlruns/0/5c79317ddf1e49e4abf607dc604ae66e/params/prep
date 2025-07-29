@@ -1,0 +1,10 @@
+ColumnTransformer(transformers=[('other', 'passthrough',
+                                 Index(['order_products_value', 'order_freight_value', 'order_items_qty',
+       'product_photos_qty', 'product_name_length',
+       'product_description_length', 'review_score', 'summary_payments_value',
+       'installments', 'sequential', 'product_weight_g', 'product_length_cm',
+       'product_height_cm', 'product_width_cm', 'customer_city_te',
+       'seller_city_te', 'product_category_name_english_te'],
+      dtype='object')),
+                                ('ohe', OneHotEncoder(handle_unknown='ignore'),
+                                 ['customer_state', 'seller_state'])])
