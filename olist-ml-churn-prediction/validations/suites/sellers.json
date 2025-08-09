@@ -1,0 +1,57 @@
+{
+  "columns": {
+    "order_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "product_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "seller_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "seller_zip_code_prefix": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": -77.7,
+        "high": 1010.7
+      }
+    },
+    "seller_city": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "seller_state": {
+      "dtype": "string",
+      "null_rate": 0.0,
+      "categories": [
+        "SP",
+        "MG",
+        "RJ",
+        "GO",
+        "RS",
+        "PR",
+        "SC",
+        "DF",
+        "BA",
+        "CE",
+        "ES",
+        "PB",
+        "MS",
+        "MT",
+        "PE",
+        "RN",
+        "PA",
+        "AM",
+        "SE",
+        "PI",
+        "RO",
+        "sp"
+      ]
+    }
+  },
+  "row_count": 98981
+}

@@ -1,0 +1,32 @@
+defaults:
+  null_delta_pp: 5.0
+  new_cat_ratio: 0.02
+  oob_ratio: 0.01          # доля значений за пределами границ
+  strict_structure: true
+  dayfirst: false
+  sample: null             # например, 0.1 для 10% сэмпла
+
+datasets:
+  - name: public_customers
+    input: "data/raw/olist_public_dataset_v2_customers.csv"
+    suite: "validations/suites/public_customers.json"
+
+  - name: public_data
+    input: "data/raw/olist_public_dataset_v2.csv"
+    suite: "validations/suites/public_data.json"
+
+  - name: payments
+    input: "data/raw/payments_olist_public_dataset.csv"
+    suite: "validations/suites/payments.json"
+
+  - name: translation
+    input: "data/raw/product_category_name_translation.csv"
+    suite: "validations/suites/translation.json"
+
+  - name: product_measures
+    input: "data/raw/product_measures_olist_public_dataset_.csv"
+    suite: "validations/suites/product_measures.json"
+
+  - name: sellers
+    input: "data/raw/sellers_olist_public_dataset_.csv"
+    suite: "validations/suites/sellers.json"

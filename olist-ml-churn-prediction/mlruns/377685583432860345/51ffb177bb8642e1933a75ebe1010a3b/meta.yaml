@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/Вячеслав/Documents/olist_churn/olist-ml-churn-prediction/mlruns/377685583432860345/51ffb177bb8642e1933a75ebe1010a3b/artifacts
+end_time: 1754385737827
+entry_point_name: ''
+experiment_id: '377685583432860345'
+lifecycle_stage: active
+run_id: 51ffb177bb8642e1933a75ebe1010a3b
+run_name: rf_baseline
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1754385629965
+status: 3
+tags: []
+user_id: Вячеслав

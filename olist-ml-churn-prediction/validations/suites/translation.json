@@ -1,0 +1,13 @@
+{
+  "columns": {
+    "product_category_name": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "product_category_name_english": {
+      "dtype": "string",
+      "null_rate": 0.0
+    }
+  },
+  "row_count": 71
+}

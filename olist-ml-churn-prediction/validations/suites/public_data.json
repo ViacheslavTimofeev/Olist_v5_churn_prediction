@@ -1,0 +1,179 @@
+{
+  "columns": {
+    "order_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "order_status": {
+      "dtype": "string",
+      "null_rate": 0.0,
+      "categories": [
+        "delivered",
+        "canceled",
+        "shipped",
+        "invoiced",
+        "processing",
+        "unavailable",
+        "approved"
+      ]
+    },
+    "order_products_value": {
+      "dtype": "floating",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": -75.30199999999896,
+        "high": 972.3219999999885
+      }
+    },
+    "order_freight_value": {
+      "dtype": "floating",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": -7.0360399999999785,
+        "high": 108.11643999999976
+      }
+    },
+    "order_items_qty": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 0.8,
+        "high": 3.2
+      }
+    },
+    "order_sellers_qty": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 0.7,
+        "high": 4.3
+      }
+    },
+    "order_purchase_timestamp": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "order_aproved_at": {
+      "dtype": "string",
+      "null_rate": 0.00018
+    },
+    "order_estimated_delivery_date": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "order_delivered_customer_date": {
+      "dtype": "string",
+      "null_rate": 0.02405
+    },
+    "customer_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "customer_city": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "customer_state": {
+      "dtype": "string",
+      "null_rate": 0.0,
+      "categories": [
+        "PR",
+        "MG",
+        "SP",
+        "GO",
+        "PE",
+        "RS",
+        "BA",
+        "AC",
+        "CE",
+        "SC",
+        "DF",
+        "RJ",
+        "AL",
+        "TO",
+        "RO",
+        "MS",
+        "ES",
+        "PB",
+        "RN",
+        "PA",
+        "MT",
+        "AM",
+        "MA",
+        "PI",
+        "SE",
+        "AP",
+        "RR"
+      ]
+    },
+    "customer_zip_code_prefix": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": -82.10000000000001,
+        "high": 1071.1
+      }
+    },
+    "product_category_name": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "product_name_lenght": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 16.8,
+        "high": 67.2
+      }
+    },
+    "product_description_lenght": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": -274.1,
+        "high": 3987.1
+      }
+    },
+    "product_photos_qty": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 0.29999999999999993,
+        "high": 8.7
+      }
+    },
+    "product_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "review_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "review_score": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 0.6,
+        "high": 5.4
+      }
+    },
+    "review_comment_title": {
+      "dtype": "string",
+      "null_rate": 0.91738
+    },
+    "review_comment_message": {
+      "dtype": "string",
+      "null_rate": 0.57511
+    },
+    "review_creation_date": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "review_answer_timestamp": {
+      "dtype": "string",
+      "null_rate": 0.0
+    }
+  },
+  "row_count": 100000
+}

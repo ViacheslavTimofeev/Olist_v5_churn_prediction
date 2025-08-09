@@ -1,0 +1,41 @@
+{
+  "columns": {
+    "product_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "product_weight_g": {
+      "dtype": "floating",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": -2463.099999999995,
+        "high": 27694.099999999944
+      }
+    },
+    "product_length_cm": {
+      "dtype": "floating",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 8.038000000000102,
+        "high": 103.58199999999889
+      }
+    },
+    "product_height_cm": {
+      "dtype": "floating",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": -4.861999999999899,
+        "high": 77.48199999999888
+      }
+    },
+    "product_width_cm": {
+      "dtype": "floating",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 5.8999999999999995,
+        "high": 67.1
+      }
+    }
+  },
+  "row_count": 24439
+}

@@ -1,0 +1,13 @@
+{
+  "columns": {
+    "customer_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "customer_unique_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    }
+  },
+  "row_count": 96264
+}

@@ -1,0 +1,43 @@
+{
+  "columns": {
+    "order_id": {
+      "dtype": "string",
+      "null_rate": 0.0
+    },
+    "installments": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 0.09999999999999998,
+        "high": 10.9
+      }
+    },
+    "sequential": {
+      "dtype": "integer",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": 0.7,
+        "high": 4.3
+      }
+    },
+    "payment_type": {
+      "dtype": "string",
+      "null_rate": 0.0,
+      "categories": [
+        "credit_card",
+        "boleto",
+        "voucher",
+        "debit_card"
+      ]
+    },
+    "value": {
+      "dtype": "floating",
+      "null_rate": 0.0,
+      "num_bounds": {
+        "low": -86.92863999999915,
+        "high": 1026.0550399999906
+      }
+    }
+  },
+  "row_count": 97433
+}
