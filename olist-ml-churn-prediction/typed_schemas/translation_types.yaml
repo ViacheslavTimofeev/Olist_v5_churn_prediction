@@ -1,0 +1,8 @@
+schema:
+  product_category_name:
+    type: string
+  product_category_name_english:
+    type: string
+options:
+  mode: strict      # strict | coerce
+  keep_unknown_columns: false

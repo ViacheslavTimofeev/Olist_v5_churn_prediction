@@ -119,7 +119,24 @@ def validate(input: str, suite_path: str, report_dir: str = "validations/reports
     typer.echo(f"Валидация пройдена. Отчёт: {rep_dir}/summary.json")
 
 
+def _load_df(ds: dict) -> pd.DataFrame:
+    # 1) если есть cast.output — читаем его
+    out = (ds.get("cast") or {}).get("output")
+    if out and Path(out).exists():
+        return pd.read_parquet(out) if str(out).endswith(".parquet") else pd.read_csv(out)
+    # 2) иначе читаем исходник
+    src = ds["path"]
+    return pd.read_parquet(src) if str(src).endswith(".parquet") else pd.read_csv(src)
+
+
+'''
 def _load_df(entry: Dict[str, Any]) -> pd.DataFrame:
+    """
+    Ожидается, что читает датасет по описанию 'ds' из манифеста и возвращает DataFrame.
+    Примеры полей ds:
+      - file:  ds["input"] с glob-маской и/или ds["reader"] == "file"
+      - sql:   ds["reader"] == "sql", ds["query"], ds["conn_env"], ds["params"]
+    """
     reader = entry.get("reader", "file")
     if reader == "sql":
         import sqlalchemy as sa
@@ -129,7 +146,7 @@ def _load_df(entry: Dict[str, Any]) -> pd.DataFrame:
     else:
         path = sorted(glob.glob(entry["input"]))[-1]  # возьмём самый свежий
         return pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(path)
-
+'''
 @app.command()
 def profile_all(manifest: str = "validations/manifest.yaml"):
     cfg = yaml.safe_load(open(manifest))
@@ -242,40 +259,54 @@ def _validate_df_core(df, suite_path, ds=None, defaults=None):
 @app.command()
 def validate_all(manifest: str = "validations/manifest.yaml"):
     """
-    Валидирует все датасеты из manifest.yaml, используя внешнюю _load_df(ds).
-    Печатает статус по каждому датасету и возвращает exit code 1 при любых ошибках.
+    Валидирует все датасеты из manifest.yaml, используя внешнюю _load_df(ds).      
+    Печатает статус по каждому датасету и возвращает exit code 1 при любых
+    ошибках.
     """
     cfg = yaml.safe_load(Path(manifest).read_text())
-    defaults = cfg.get("defaults", {})
-    errors_total = []
+    defaults_validate = (cfg.get("defaults") or {}).get("validate", {})
+    errors_total: list[str] = []
 
     for ds in cfg["datasets"]:
-        # пропускаем выключенные
+        # выключенные наборы пропускаем
         if ds.get("enabled") is False or ds.get("validate") is False:
             continue
 
         name = ds["name"]
 
-        # 1) загрузка данных через внешнюю _load_df(ds)
+        # 1) загрузка данных (предпочтение cast.output)
         try:
-            df = _load_df(ds)  # ← тут твоя внешняя функция
+            df = _load_df(ds)  # уже реализовано выше
         except Exception as e:
             msg = f"load error {e}"
             typer.echo(f"❌ {name}: {msg}")
             errors_total.append(f"{name}: {msg}")
             continue
 
-        # 2) наличие suite
-        suite_path = ds["suite"]
+        # 2) где лежит suite
+        vcfg = ds.get("validate") or {}
+        suite_path = vcfg.get("suite") or ds.get("suite")  # бэкомпат
+        if not suite_path:
+            msg = "suite not specified (expected validate.suite)"
+            typer.echo(f"❌ {name}: {msg}")
+            errors_total.append(f"{name}: {msg}")
+            continue
         if not Path(suite_path).exists():
             msg = f"suite not found: {suite_path}"
             typer.echo(f"❌ {name}: {msg}")
             errors_total.append(f"{name}: {msg}")
             continue
 
-        # 3) валидация
+        # 3) собираем контекст для ядра (что можно переопределять на уровне датасета)
+        ds_ctx = {
+            "thresholds": vcfg.get("thresholds", {}),
+            "columns": vcfg.get("columns", {}),
+            "strict_structure": vcfg.get("strict_structure", defaults_validate.get("strict_structure", True)),
+        }
+
+        # 4) запуск ядра
         try:
-            errs = _validate_df_core(df, suite_path, ds, defaults)  # возвращает list[str]
+            errs = _validate_df_core(df, suite_path, ds_ctx, defaults_validate)
         except Exception as e:
             errs = [f"runtime error {e}"]
 
@@ -291,33 +322,5 @@ def validate_all(manifest: str = "validations/manifest.yaml"):
 
     typer.echo("✅ Все таблицы прошли валидацию")
 
-'''
-@app.command()
-def validate_all(manifest: str = "validations/manifest.yaml"):
-    cfg = yaml.safe_load(open(manifest))
-    defaults = cfg.get("defaults", {})
-    errors_total = []
-    for ds in cfg["datasets"]:
-        df = _load_df(ds)
-        suite_path = ds["suite"]
-        kw = {
-          "null_delta_pp": ds.get("thresholds", {}).get("null_delta_pp", defaults.get("null_delta_pp", 5.0)),
-          "new_cat_ratio": ds.get("thresholds", {}).get("new_cat_ratio", defaults.get("new_cat_ratio", 0.02)),
-          # передай внутрь и per-column overrides, если реализуешь
-        }
-        # тут лучше вызвать внутреннюю функцию _validate_df(df, suite, overrides)
-        # которая вернёт список ошибок; ниже просто пример:
-        try:
-            _errors = _validate_df_core(df, suite_path, ds, defaults)  # реализуй как обёртку вокруг твоей validate
-        except Exception as e:
-            _errors = [f"{ds['name']}: runtime error {e}"]
-        if _errors:
-            errors_total.extend([f"{ds['name']}: {e}" for e in _errors])
-
-    if errors_total:
-        for e in errors_total: typer.echo("❌ " + e)
-        raise typer.Exit(code=1)
-    typer.echo("✅ Все таблицы прошли валидацию")
-'''
 if __name__ == "__main__":
     app()

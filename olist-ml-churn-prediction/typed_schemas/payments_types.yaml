@@ -1,0 +1,16 @@
+schema:
+  order_id:
+    type: string
+  installments:
+    type: int
+    nullable: false
+  sequential:
+    type: int
+    nullable: false
+  payment_type:
+    type: string
+  value:
+    type: float
+options:
+  mode: strict      # strict | coerce
+  keep_unknown_columns: false

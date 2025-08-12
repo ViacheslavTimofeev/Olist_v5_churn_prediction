@@ -1,0 +1,73 @@
+schema:
+  order_id:
+    type: string
+  order_status:
+    type: string
+  order_products_value:
+    type: float
+    ordered: false
+  order_freight_value:
+    type: float
+  order_items_qty:
+    type: int
+    nullable: false
+  order_sellers_qty:
+    type: int
+    nullable: false
+  order_purchase_timestamp:
+    type: datetime
+    format: "%Y-%m-%d %H:%M:%S.%f"
+    drop_tz: true
+  order_aproved_at:
+    type: datetime
+    format: "%Y-%m-%d %H:%M:%S.%f"
+    drop_tz: false
+  order_estimated_delivery_date:
+    type: datetime
+    format: "%Y-%m-%d %H:%M:%S.%f"
+    drop_tz: false
+  order_delivered_customer_date:
+    type: datetime
+    format: "%Y-%m-%d %H:%M:%S.%f"
+    drop_tz: false
+  customer_id:
+    type: string
+  customer_city:
+    type: string
+  customer_state:
+    type: string
+  customer_zip_code_prefix:
+    type: string
+  product_category_name:
+    type: string
+  product_name_lenght:
+    type: int
+    nullable: false
+  product_description_lenght:
+    type: int
+    nullable: true
+  product_photos_qty:
+    type: int
+    nullable: true
+  product_id:
+    type: string
+  review_id:
+    type: string
+  review_score:
+    type: int
+    nullable: false
+  review_comment_title:
+    type: string
+  review_comment_message:
+    type: string
+  review_creation_date:
+    type: datetime
+    format: "%Y-%m-%d %H:%M:%S.%f"
+    drop_tz: false
+  review_answer_timestamp:
+    type: datetime
+    format: "%Y-%m-%d %H:%M:%S%z"
+    drop_tz: true
+options:
+  mode: coerce      # strict | coerce
+  keep_unknown_columns: false

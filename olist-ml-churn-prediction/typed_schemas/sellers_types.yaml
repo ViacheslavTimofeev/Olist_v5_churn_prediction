@@ -1,0 +1,16 @@
+schema:
+  order_id:
+    type: string
+  product_id:
+    type: string
+  seller_id:
+    type: string
+  seller_zip_code_prefix:
+    type: string
+  seller_city:
+    type: string
+  seller_state:
+    type: string
+options:
+  mode: strict      # strict | coerce
+  keep_unknown_columns: false

@@ -1,0 +1,8 @@
+schema:
+  customer_id:
+    type: string
+  customer_unique_id:
+    type: string
+options:
+  mode: strict      # strict | coerce
+  keep_unknown_columns: false

@@ -1,181 +1,77 @@
 from __future__ import annotations
-from datetime import datetime
-from typing import Type, get_origin, get_args, Union, Optional, Dict, List, Callable, Iterable
-from pydantic import BaseModel, ValidationError
-import argparse
-import logging
-from pathlib import Path
 
-import joblib
+from typing import Dict, List, Iterable, Callable
 import pandas as pd
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-
-import itertools
-
-from pandas.api.types import (
-    is_string_dtype,
-    is_categorical_dtype,
-)
-
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s - %(levelname)s - %(message)s")
+from pandas.api.types import is_categorical_dtype, is_string_dtype
 
 
-def _split_schema_fields(schema):
-    """Возвращает (date_cols, dtype_map) из Pydantic-схемы."""
-    date_cols, dtypes = [], {}
+# ===================== Вспомогательные =====================
 
-    for name, field in schema.model_fields.items():      # Pydantic v2 API
-        anno = field.annotation                          # исходная аннотация
-        # 1. «разворачиваем» Optional[T]  →  T
-        if get_origin(anno) is Optional:
-            anno = get_args(anno)[0]
-        # 2️. теперь проверяем базовый тип
-        if anno is datetime or (get_origin(anno) is Union and datetime in get_args(anno)):
-            date_cols.append(name)
-        elif anno is str:
-            dtypes[name] = "string"      # всегда строковый dtype, даже с <NA>
-        elif anno is float:
-            dtypes[name] = "float32"
-        elif anno is int:
-            dtypes[name] = "Int64"       # nullable целые
-
-    return date_cols, dtypes
+def _to_list(x) -> List[str]:
+    if x is None:
+        return []
+    if isinstance(x, (list, tuple)):
+        return list(x)
+    return [x]
 
 
-def load_data(path: str | Path,
-              schema: Type[BaseModel] | None = None,
-              validate: bool = False) -> pd.DataFrame:
-    """
-    Универсальный загрузчик CSV / Parquet.
+def _infer_categoricals(df: pd.DataFrame) -> List[str]:
+    """Определяем строковые/категориальные столбцы."""
+    cols: List[str] = []
+    for c in df.columns:
+        s = df[c]
+        if is_categorical_dtype(s) or is_string_dtype(s) or s.dtype == "object":
+            cols.append(c)
+    return cols
 
-    Parameters
-    ----------
-    path : str | Path
-        Путь к файлу данных (.csv или .parquet).
-    schema : BaseModel subclass | None
-        Pydantic-модель для определения типов
-        (и, опционально, валидации строк).
-    validate : bool, default False
-        Проверять ли каждую строку через schema. Может быть медленно
-        на больших таблицах, используйте для отладки.
 
-    Returns
-    -------
-    pd.DataFrame
-    """
-    path = Path(path)
-    if schema:
-        date_cols, dtype_map = _split_schema_fields(schema)
-    else:
-        date_cols, dtype_map = [], {}
-
-    # --- чтение файла ---
-    if path.suffix == ".csv":
-        df = pd.read_csv(
-            path,
-            parse_dates=date_cols,      # авто-конверт дат
-            dtype=dtype_map,            # явные типы
-            low_memory=False
-        )
-    elif path.suffix == ".parquet":
-        df = pd.read_parquet(path)
-        # На всякий случай убеждаемся, что date-колонки в datetime64
-        for col in date_cols:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors="coerce")
-    else:
-        raise ValueError(f"Unsupported extension: {path.suffix}")
-
-    # --- валидация (необяз.) ---
-    if validate and schema:
-        bad_rows: list[int] = []
-        for idx, record in df.iterrows():
-            try:
-                schema.model_validate(record.to_dict())
-            except ValidationError:
-                bad_rows.append(idx)
-
-        if bad_rows:
-            raise ValueError(f"Schema validation failed for rows: {bad_rows[:10]} "
-                             f"(total={len(bad_rows)})")
-
-    return df
-
+# ===================== Операции предобработки =====================
 
 def lowercase_categoricals(
     df: pd.DataFrame,
-    cat_cols: list[str],
+    cat_cols: Iterable[str] | None = None,
     inplace: bool = False
 ) -> pd.DataFrame:
     """
-    Приводит строковые (категориальные) значения к нижнему регистру.
+    Приводит строковые/категориальные колонки к нижнему регистру и заменяет пробелы на '_'.
 
     Параметры
-    ----------
+    ---------
     df : pd.DataFrame
-        Входной датасет.
-    cat_cols : list[str] | None
-        Список столбцов-категорий.  
-        • Если None — автоматически берём все столбцы dtype == 'object'  
-          или категориальные ('category').
+    cat_cols : Iterable[str] | None
+        Если None — берём все строковые/категориальные столбцы автоматически.
     inplace : bool
-        • True  — преобразует переданный df на месте и возвращает его же.  
-        • False — создаёт копию и возвращает её (оригинал не меняется).
+        Если True — модифицируем исходный df, иначе возвращаем копию.
 
     Возвращает
     ----------
     pd.DataFrame
-        Датасет с приведёнными к lower-case категориальными столбцами.
-
-    Пример
-    -------
-    >>> df = pd.DataFrame({'city': ['Moscow', 'LONDON', 'PaRiS'], 'value': [1, 2, 3]})
-    >>> lowercase_categoricals(df)
-        city  value
-    0  moscow      1
-    1  london      2
-    2   paris      3
     """
-    
     target = df if inplace else df.copy()
+    cat_cols = list(cat_cols) if cat_cols is not None else _infer_categoricals(target)
 
     for col in cat_cols:
+        if col not in target.columns:
+            continue
         s = target[col]
 
-        # --- Категориальные колонки ---
+        # category — преобразуем список категорий, чтобы dtype остался category
         if is_categorical_dtype(s):
-            # преобразуем именно категории,
-            # чтобы сам столбец остался category
             new_cats = (
-                s.cat.categories
-                 .astype("string")                 # <-- уже StringDtype, не object
+                s.cat.categories.astype("string")
                  .str.lower()
                  .str.replace(r"\s+", "_", regex=True)
             )
             target[col] = s.cat.rename_categories(new_cats)
             continue
 
-        # --- Строковые расширенные типы (StringDtype) ---
-        if is_string_dtype(s):
+        # StringDtype или object — преобразуем значения
+        if is_string_dtype(s) or s.dtype == "object":
             target[col] = (
-                s.str.lower()
+                s.astype("string")
+                 .str.lower()
                  .str.replace(r"\s+", "_", regex=True)
             )
-            # dtype остаётся string
-            continue
-
-        # --- Обычный object (python-строки) ---
-        target[col] = (
-            s.astype("string")                    # << вместо str → StringDtype
-             .str.lower()
-             .str.replace(r"\s+", "_", regex=True)
-             # при желании вернём object:
-             # .astype("object")
-        )
 
     return target
 
@@ -186,114 +82,74 @@ def disambiguate_city_state(
     state_col: str,
     *,
     suffix_sep: str = "_",
-    inplace: bool = False,
+    inplace: bool = False
 ) -> pd.DataFrame:
     """
-    Устраняет неоднозначность «город-штат»: если один и тот же `city`
-    встречается в нескольких штатах, добавляет цифровой суффикс
-    (`_1`, `_2`, …) начиная со второго штата.
+    Разрешает неоднозначность городов, добавляя к одноимённым городам суффикс штата/региона.
 
-    Алгоритм
-    --------
-    1. Находим города, у которых `nunique(state) > 1`.
-    2. Для каждого такого города сортируем список штатов (чтобы
-       результат был воспроизводим).
-    3. • Для первого штата оставляем имя без изменений.  
-       • Для второго и последующих добавляем \"_<idx>\".
+    Пример:
+    - 'paris' из разных штатов → 'paris_sp', 'paris_rj'
 
-    Параметры
-    ---------
-    df : pd.DataFrame
-        Таблица, содержащая столбцы с городом и штатом.
-    city_col : str
-        Название столбца с городами (нормализованными: lower + '_' вместо пробелов).
-    state_col : str
-        Название столбца со штатами/регионами.
-    suffix_sep : str
-        Разделитель перед номером («_» по умолчанию → `alvorada_1`).
-    inplace : bool
-        • True  — меняет `df` на месте и возвращает его.  
-        • False — работает с копией и возвращает новую таблицу.
+    Требует, чтобы city_col и state_col уже были приведены к нижнему регистру
+    (можно вызвать перед этим lowercase_categoricals).
 
-    Возвращает
-    ----------
-    pd.DataFrame
-        Датафрейм, где неоднозначные города переименованы.
-
-    Пример
-    -------
-    >>> data = {
-    ...     "city":  ["alvorada", "alvorada", "alvorada", "porto_alegre"],
-    ...     "state": ["RS",       "TO",        "BA",       "RS"]
-    ... }
-    >>> df = pd.DataFrame(data)
-    >>> disambiguate_city_state(df)
-              city state
-    0     alvorada    RS
-    1  alvorada_1    TO
-    2  alvorada_2    BA
-    3  porto_alegre    RS
+    Возвращает df с обновлённой колонкой city_col.
     """
     target = df if inplace else df.copy()
 
-    # 1. Города, встретившиеся более чем в одном штате
-    dup_cities = (
-        target.groupby(city_col)[state_col]
-        .nunique()
-        .loc[lambda s: s > 1]
-        .index
-    )
+    if city_col not in target or state_col not in target:
+        return target
 
-    # 2. Обрабатываем каждый «двойник»
-    for city in dup_cities:
-        # список штатов отсортирован
-        states = sorted(target.loc[target[city_col] == city, state_col].unique())
-        for idx, st in enumerate(states):
-            # суффикс только с 1-го дубликата
-            suffix = "" if idx == 0 else f"{suffix_sep}{idx}"
-            new_name = f"{city}{suffix}"
-            mask = (target[city_col] == city) & (target[state_col] == st)
-            target.loc[mask, city_col] = new_name
+    # Вычисляем, какие города встречаются в >1 штате
+    combos = target.groupby([city_col, state_col]).size().reset_index(name="n")
+    dup_cities = (
+        combos.groupby(city_col)[state_col]
+        .nunique()
+        .reset_index(name="nu")
+    )
+    ambiguous = set(dup_cities.loc[dup_cities["nu"] > 1, city_col])
+
+    if not ambiguous:
+        return target
+
+    # Для неоднозначных городов добавляем суффикс штата
+    mask = target[city_col].isin(ambiguous)
+    target.loc[mask, city_col] = (
+        target.loc[mask, city_col].astype("string") + suffix_sep +
+        target.loc[mask, state_col].astype("string")
+    )
 
     return target
 
 
-NumericAgg = Union[str, Callable[[pd.Series], float]]
-
-def _to_list(obj: Union[str, List[str]]) -> List[str]:
-    return [obj] if isinstance(obj, str) else list(obj)
-
-
 def group_by_features(
     df: pd.DataFrame,
-    group_mapping: Dict[str, Union[str, List[str]]],
-    agg_funcs: Union[Dict[str, NumericAgg], List[NumericAgg], NumericAgg] = "sum",
+    group_mapping: Dict[str, List[str] | str],
+    *,
+    agg_funcs: str | Callable | List[str | Callable] | Dict[str, str | Callable] = "sum",
     keep_original: bool = False,
     prefix: str | None = None,
 ) -> pd.DataFrame:
-    '''Автоматизирует создание новых признаков путём агрегирования (группировки)
-    заданного набора колонок.
+    """
+    Построчные агрегации признаков (по колонкам), с гибкими функциями.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Входной датафрейм.
+    Параметры
+    ---------
     group_mapping : dict
-        Отображение {'новый_признак': ['col1','col2', ...]}.
-    agg_funcs : dict | list | str | callable, default "sum"
-        Функции агрегирования:
-            * одна строка/функция — применяется ко всем группам;
-            * список — позиционно для каждого ключа group_mapping;
-            * словарь — {'новый_признак': 'mean'}.
-    keep_original : bool, default False
-        Если True сохранит исходные колонки.
-    prefix : str | None, optional
-        Префикс для итоговых колонок, удобно для стэкинга в конвейере.
-    Returns
-    -------
+        {"new_feature_name": ["col1", "col2", ...], ...}
+        или {"new_feature_name": "col"}.
+    agg_funcs :
+        - строка: одна agg-функция для всех групп ("sum", "mean", "max", ...),
+        - callable: одна функция для всех групп,
+        - список: по порядку для каждой группы,
+        - dict: {"new_feature_name": "sum" | callable, ...}
+    keep_original : оставить ли исходные колонки.
+    prefix : префикс для новых колонок.
+
+    Возвращает
+    ----------
     pd.DataFrame
-        Датафрейм со сгенерированными колонками.
-    '''
+    """
     df_out = df.copy()
 
     # Нормализуем agg_funcs к словарю
@@ -315,59 +171,34 @@ def group_by_features(
         cols_list = _to_list(cols)
         agg_fn = agg_funcs[new_feat]
         new_name = f"{prefix}_{new_feat}" if prefix else new_feat
+
+        # aggregate по строкам
         new_cols[new_name] = df_out[cols_list].aggregate(agg_fn, axis=1)
 
-    # Удаляем оригинальные колонки, если нужно
-    if not keep_original:
-        cols_to_drop: Iterable[str] = set(
-            itertools.chain.from_iterable(_to_list(v) for v in group_mapping.values())
-        )
-        df_out = df_out.drop(columns=list(cols_to_drop))
+    if keep_original:
+        for k, v in new_cols.items():
+            df_out[k] = v
+        return df_out
 
-    # Добавляем новые
-    df_out = pd.concat([df_out, pd.DataFrame(new_cols, index=df.index)], axis=1)
-    return df_out
+    # оставляем только новые + колонки, не участвовавшие ни в одной группе
+    used = set(sum((_to_list(v) for v in group_mapping.values()), []))
+    base = df_out.drop(columns=[c for c in used if c in df_out.columns], errors="ignore")
+    for k, v in new_cols.items():
+        base[k] = v
+    return base
 
 
-class FeatureGrouper:
-    '''
-    Обёртка, совместимая со Scikit-Learn API (fit/transform).
-    Позволяет легко подключать группировку в Pipeline/ColumnTransformer.
+# ===================== Утилитарные шаги (по желанию) =====================
 
-    Пример
-    ------
-    >>> grouper = FeatureGrouper(mapping, agg_funcs='sum')
-    >>> X_new = grouper.fit_transform(X)
-    '''
+def rename_columns(df: pd.DataFrame, mapping: Dict[str, str], inplace: bool = False) -> pd.DataFrame:
+    """Переименование колонок."""
+    target = df if inplace else df.copy()
+    return target.rename(columns=mapping)
 
-    def __init__(
-        self,
-        group_mapping: Dict[str, Union[str, List[str]]],
-        agg_funcs: Union[Dict[str, NumericAgg], List[NumericAgg], NumericAgg] = "sum",
-        keep_original: bool = False,
-        prefix: str | None = None,
-    ):
-        self.group_mapping = group_mapping
-        self.agg_funcs = agg_funcs
-        self.keep_original = keep_original
-        self.prefix = prefix
-
-    def fit(self, X: pd.DataFrame, y=None):
-        # Ничего обучать не нужно
-        return self
-
-    def transform(self, X: pd.DataFrame):
-        return group_by_features(
-            X,
-            self.group_mapping,
-            agg_funcs=self.agg_funcs,
-            keep_original=self.keep_original,
-            prefix=self.prefix,
-        )
-
-    def get_feature_names_out(self, input_features=None):
-        prefix = f"{self.prefix}_" if self.prefix else ""
-        return [f"{prefix}{name}" for name in self.group_mapping]
+def drop_columns(df: pd.DataFrame, cols: Iterable[str], inplace: bool = False) -> pd.DataFrame:
+    """Удаление колонок (ignore missing)."""
+    target = df if inplace else df.copy()
+    return target.drop(columns=list(cols), errors="ignore")
 
 
 # ---------------------- Планы на будущее ----------------------

@@ -1,0 +1,15 @@
+schema:
+  product_id:
+    type: string
+  product_weight_g:
+    type: float
+  product_length_cm:
+    type: float
+    nullable: false
+  product_height_cm:
+    type: float
+  product_width_cm:
+    type: float
+options:
+  mode: strict      # strict | coerce
+  keep_unknown_columns: false
