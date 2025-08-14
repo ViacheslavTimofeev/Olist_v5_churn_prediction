@@ -1,0 +1,136 @@
+defaults:
+  sample: null         # можно поставить 0.1 для дебага, чтобы брать 10% строк
+
+datasets:
+# Примеры:
+# 1) Customers — читаем типизированный parquet и делаем базовую чистку
+#  - name: customers_basic
+#    input: data/interim/cli_related/typed/public_customers_typed.parquet   # поддерживаются и glob-маски
+#    sample: null
+#    steps:
+#      - op: lowercase_categoricals                       # приведём регистр
+#        cat_cols: [customer_city, customer_state]        # если не указать — возьмёт все object/string
+#      - op: disambiguate_city_state                      # склейка города со штатом (разрешение омонимов)
+#        city_col: customer_city
+#        state_col: customer_state
+#        suffix_sep: "_"                                  # опционально, по умолчанию "_" 
+#      - op: rename_columns                               # утилитарные переименования
+#        mapping:
+#          customer_unique_id: customer_id
+#      - op: drop_columns
+#        cols: [customer_zip_code_prefix]                 # убираем префикс индекса
+#    output: data/processed/customers.proc.parquet
+
+# 2) Orders — примеры feature-группировок и понижения регистра
+#  - name: orders_basic
+#    input: data/interim/public_data_typed.parquet
+#    steps:
+#      - op: lowercase_categoricals
+#        cat_cols: [order_status]
+#      - op: group_by_features                            # создаём агрегаты по наборам столбцов
+#        group_mapping:
+#          price_total: [order_products_value, order_freight_value]
+#          qty_total:   [order_items_qty, order_sellers_qty]
+#        agg_funcs: sum                                   # может быть str|list|dict (см. pandas agg)
+#        keep_original: true                              # оставить исходные признаки
+#        prefix: "g_"                                     # добавлять префикс к новым фичам
+#    output: data/processed/orders.proc.parquet
+
+# 3) Payments — минимальная чистка
+#  - name: payments_basic
+#    input: data/interim/payments_typed.parquet
+#    steps:
+#      - op: lowercase_categoricals
+#        cat_cols: [payment_type]
+#      - op: drop_columns
+#        cols: [unnecessary_flag]
+#    output: data/processed/payments.proc.parquet
+
+# 4) (Опционально) Пример чтения из БД
+#  - name: sellers_from_db
+#    enabled: false                                       # включи, если нужно
+#    reader: sql                                          # спец-ридер: возьмёт query + conn_env
+#    conn_env: OLIST_DB_URL                               # имя переменной окружения со строкой подключения
+#    query: |
+#      SELECT seller_id, seller_city, seller_state
+#      FROM sellers
+#    steps:
+#      - op: lowercase_categoricals
+#      - op: disambiguate_city_state
+#        city_col: seller_city
+#        state_col: seller_state
+#    output: data/processed/sellers.proc.parquet
+
+ # 1) payments_typed
+  - name: payments_basic
+    input: data/interim/cli_related/typed/payments_typed.parquet
+    sample: null
+    steps:
+      - op: lowercase_categoricals
+        cat_cols: [payment_type]
+    output: data/interim/cli_related/basic/payments_basic.parquet
+
+ # 2) Не включено в pipeline: product_measures
+ # - name: product_measures_basic
+ #   input: data/interim/cli_related/typed/product_measures_typed.parquet
+ #   sample: null
+ #   steps:
+ #     - op: lowercase_categoricals
+ #       cat_cols: [product_id]
+ #   output: data/interim/cli_related/basic/product_measures_basic.parquet
+
+ # 3) Не включено в pipeline: public_customers_typed
+ # - name: customers_basic
+ #   input: data/interim/cli_related/typed/public_customers_typed.parquet
+ #   sample: null
+ #   steps:
+ #     - op: lowercase_categoricals
+ #       cat_cols: [customer_id, customer_unique_id]
+ #   output: data/interim/cli_related/basic/public_customers_basic.parquet
+
+  # 4) public_data
+  - name: public_data_basic
+    input: data/interim/cli_related/typed/public_data_typed.parquet
+    sample: null
+    steps:
+      - op: lowercase_categoricals                       # приведём регистр
+        cat_cols: [order_status, customer_city, customer_state, product_category_name]
+      - op: disambiguate_city_state                      # склейка города со штатом (разрешение омонимов)
+        city_col: customer_city
+        state_col: customer_state
+        suffix_sep: "_"
+      - op: rename_columns
+        mapping:
+          product_name_lenght: product_name_length
+          product_description_lenght: product_description_length
+      - op: groupby_aggregate
+        by: order_id
+        sum_cols:   [order_products_value, order_freight_value, order_items_qty, product_photos_qty]
+        mean_cols:  [product_name_length, product_description_length]
+        min_cols:   [review_creation_date, review_answer_timestamp]
+        first_for_rest: true   # все остальные колонки агрегируем как first
+      - op: drop_columns
+        cols: [customer_zip_code_prefix, review_comment_title, review_comment_message]
+    output: data/interim/cli_related/basic/public_data_basic.parquet
+
+  # 5) sellers
+  - name: sellers_basic
+    input: data/interim/cli_related/typed/sellers_typed.parquet
+    steps:
+      - op: lowercase_categoricals
+        cat_cols: [seller_city, seller_state]
+      - op: disambiguate_city_state
+        city_col: seller_city
+        state_col: seller_state
+        suffix_sep: "_"
+      - op: drop_columns
+        cols: [seller_zip_code_prefix]
+    output: data/interim/cli_related/basic/sellers_basic.parquet
+
+  # 6) translation
+  - name: translation_basic
+    input: data/interim/cli_related/typed/translation_typed.parquet
+    steps:
+      - op: lowercase_categoricals
+        cat_cols: [product_category_name, product_category_name_english]
+    output: data/interim/cli_related/basic/translation_basic.parquet

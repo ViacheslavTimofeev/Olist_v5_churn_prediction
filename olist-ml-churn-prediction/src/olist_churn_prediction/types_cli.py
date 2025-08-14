@@ -122,7 +122,7 @@ def cast(
 
 
 @app.command()
-def cast_all(manifest: Path = typer.Argument("validations/manifest.yaml"),
+def cast_all(manifest: Path = typer.Argument("validations/validation_manifest.yaml"),
              fail_fast: bool = typer.Option(True, help="Остановиться при первой ошибке")):
     cfg = yaml.safe_load(open(manifest, "r", encoding="utf-8"))
     dfl_cast = (cfg.get("defaults") or {}).get("cast", {})
@@ -137,7 +137,7 @@ def cast_all(manifest: Path = typer.Argument("validations/manifest.yaml"),
         # склеиваем output по умолчанию, если не указан
         output = cast_cfg.get("output")
         if not output:
-            out_dir = Path(cast_cfg.get("output_dir", "data/interim"))
+            out_dir = Path(cast_cfg.get("output_dir", "data/interim/cli_related/typed"))
             out_dir.mkdir(parents=True, exist_ok=True)
             output = out_dir / f"{name}.typed.parquet"
 

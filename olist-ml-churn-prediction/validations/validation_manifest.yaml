@@ -17,7 +17,7 @@ datasets:
     path: "data/raw/olist_public_dataset_v2_customers.csv"
     cast:
       schema: typed_schemas/public_customers_types.yaml
-      output: data/interim/public_customers_typed.parquet 
+      output: data/interim/cli_related/typed/public_customers_typed.parquet 
       mode: strict
     validate:
       suite: "validations/suites/public_customers.json"
@@ -26,7 +26,7 @@ datasets:
     path: "data/raw/olist_public_dataset_v2.csv"
     cast:
       schema: typed_schemas/public_data_types.yaml
-      output: data/interim/public_data_typed.parquet 
+      output: data/interim/cli_related/typed/public_data_typed.parquet 
       mode: strict
     validate:
       suite: "validations/suites/public_data.json"
@@ -35,7 +35,7 @@ datasets:
     path: "data/raw/payments_olist_public_dataset.csv"
     cast:
       schema: typed_schemas/payments_types.yaml
-      output: data/interim/payments_typed.parquet 
+      output: data/interim/cli_related/typed/payments_typed.parquet 
       mode: strict
     validate:
       suite: "validations/suites/payments.json"
@@ -44,7 +44,7 @@ datasets:
     path: "data/raw/product_category_name_translation.csv"
     cast:
       schema: typed_schemas/translation_types.yaml
-      output: data/interim/translation_typed.parquet 
+      output: data/interim/cli_related/typed/translation_typed.parquet 
       mode: strict
     validate:
       suite: "validations/suites/translation.json"
@@ -53,7 +53,7 @@ datasets:
     path: "data/raw/product_measures_olist_public_dataset_.csv"
     cast:
       schema: typed_schemas/product_measures_types.yaml
-      output: data/interim/product_measures_typed.parquet 
+      output: data/interim/cli_related/typed/product_measures_typed.parquet 
       mode: strict
     validate:
       suite: "validations/suites/product_measures.json"
@@ -62,7 +62,7 @@ datasets:
     path: "data/raw/sellers_olist_public_dataset_.csv"
     cast:
       schema: typed_schemas/sellers_types.yaml
-      output: data/interim/sellers_typed.parquet 
+      output: data/interim/cli_related/typed/sellers_typed.parquet 
       mode: strict
     validate:
       suite: "validations/suites/sellers.json"

@@ -1,18 +1,14 @@
-# preproc_cli.py
-# CLI для автоматизации предобработки по манифесту (в стиле validator_cli.py)
 from __future__ import annotations
 import json, glob, os, yaml, typer
 from pathlib import Path
 from typing import Dict, Any, Union, List, Callable
 import pandas as pd
 
-# --- импорт твоих функций предобработки ---
 from olist_churn_prediction import feature_processing as fp  # lowercase_categoricals, disambiguate_city_state, group_by_features
 
 app = typer.Typer(help="Preprocessing pipeline CLI (manifest-driven)")
 
-# ======== Загрузка/сохранение — по мотивам validator_cli.py ========
-
+''' Загрузка/сохранение — по мотивам validator_cli.py '''
 def _load_df(entry: Dict[str, Any]) -> pd.DataFrame:
     """
     Совместимый загрузчик как в validator_cli.py:
@@ -38,8 +34,7 @@ def _save_df(df: pd.DataFrame, output: str):
         df.to_csv(out, index=False)
     typer.echo(f"💾 Saved: {out}")
 
-# ======== Ядро применения шагов ========
-
+''' Ядро применения шагов '''
 def _apply_steps(
     df: pd.DataFrame,
     steps: List[Dict[str, Any]],
@@ -80,6 +75,44 @@ def _apply_steps(
                 keep_original=keep_original, prefix=prefix
             )
 
+        elif op == "groupby_aggregate":
+            # Группировка по ключу(ам) с разными аггрегаторами по колонкам.
+            # Параметры:
+            #   by: str | list[str]        — ключ(и) группировки
+            #   sum_cols:  list[str]
+            #   mean_cols: list[str]
+            #   min_cols:  list[str]
+            #   first_for_rest: bool=True  — для всех остальных колонок берём 'first'
+            by = step["by"]
+            if isinstance(by, str):
+                by = [by]
+
+            sum_cols  = step.get("sum_cols", []) or []
+            mean_cols = step.get("mean_cols", []) or []
+            min_cols  = step.get("min_cols", []) or []
+            first_for_rest = bool(step.get("first_for_rest", True))
+
+            # 1) строим словарь аггрегаций
+            agg_dict = {}
+            for c in sum_cols:  agg_dict[c]  = "sum"
+            for c in mean_cols: agg_dict[c] = "mean"
+            for c in min_cols:  agg_dict[c]  = "min"
+
+            # 2) остальные колонки — 'first' (кроме ключей и уже перечисленных)
+            if first_for_rest:
+                selected = set(by) | set(sum_cols) | set(mean_cols) | set(min_cols)
+                for c in X.columns:
+                    if c not in selected:
+                        agg_dict[c] = "first"
+
+            # 3) сам groupby
+            # dropna=False чтобы не терять группы с NaN-ключом (на твой вкус можно True).
+            X = (
+                X.groupby(by, dropna=False)
+                 .agg(agg_dict)
+                 .reset_index()
+            )
+
         elif op == "rename_columns":
             # утилитарный шаг: {"old":"new", ...}
             mapping = step["mapping"]
@@ -106,8 +139,8 @@ def apply(
     """
     Применить шаги предобработки к одному датасету (без манифеста).
     Пример:
-      preproc apply data/raw.csv data/interim/clean.parquet \\
-        --steps-json '[{\"op\":\"lowercase_categoricals\",\"cat_cols\":[\"customer_city\",\"customer_state\"]}]'
+      preproc apply data/raw.csv data/interim/cli_related/clean.parquet \\
+        --steps-json '[{"op":"lowercase_categoricals", "cat_cols":["customer_city", "customer_state"]}]'
     """
     df = pd.read_parquet(input) if input.endswith(".parquet") else pd.read_csv(input)
     if sample:
@@ -117,7 +150,7 @@ def apply(
     _save_df(df_out, output)
 
 @app.command()
-def run(manifest: str = typer.Argument("preprocessing.yaml", help="Манифест пайплайна")):
+def run(manifest: str = typer.Option("preprocessings/preprocessing_manifest.yaml", "--manifest", "-m", help="Путь к YAML-манифесту предобработки")):
     """
     Запустить предобработку для набора датасетов по манифесту YAML.
     Структура манифеста совместима по духу с validator_cli: defaults + datasets[].

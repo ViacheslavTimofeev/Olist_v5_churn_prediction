@@ -129,26 +129,8 @@ def _load_df(ds: dict) -> pd.DataFrame:
     return pd.read_parquet(src) if str(src).endswith(".parquet") else pd.read_csv(src)
 
 
-'''
-def _load_df(entry: Dict[str, Any]) -> pd.DataFrame:
-    """
-    Ожидается, что читает датасет по описанию 'ds' из манифеста и возвращает DataFrame.
-    Примеры полей ds:
-      - file:  ds["input"] с glob-маской и/или ds["reader"] == "file"
-      - sql:   ds["reader"] == "sql", ds["query"], ds["conn_env"], ds["params"]
-    """
-    reader = entry.get("reader", "file")
-    if reader == "sql":
-        import sqlalchemy as sa
-        url = os.environ[entry["conn_env"]]
-        engine = sa.create_engine(url)
-        return pd.read_sql(sa.text(entry["query"]), engine, params=entry.get("params"))
-    else:
-        path = sorted(glob.glob(entry["input"]))[-1]  # возьмём самый свежий
-        return pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(path)
-'''
 @app.command()
-def profile_all(manifest: str = "validations/manifest.yaml"):
+def profile_all(manifest: str = "validations/validation_manifest.yaml"):
     cfg = yaml.safe_load(open(manifest))
     for ds in cfg["datasets"]:
         df = _load_df(ds)
@@ -257,9 +239,9 @@ def _validate_df_core(df, suite_path, ds=None, defaults=None):
 
 # --- command: validate-all (без внешних зависимостей на _validate_df_core) ---
 @app.command()
-def validate_all(manifest: str = "validations/manifest.yaml"):
+def validate_all(manifest: str = "validations/validation_manifest.yaml"):
     """
-    Валидирует все датасеты из manifest.yaml, используя внешнюю _load_df(ds).      
+    Валидирует все датасеты из validation_manifest.yaml, используя внешнюю _load_df(ds).      
     Печатает статус по каждому датасету и возвращает exit code 1 при любых
     ошибках.
     """
