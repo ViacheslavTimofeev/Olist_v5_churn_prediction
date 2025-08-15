@@ -3,7 +3,7 @@ defaults:
 
 datasets:
 # Примеры:
-# 1) Customers — читаем типизированный parquet и делаем базовую чистку
+# 1) Читаем типизированный parquet и делаем базовую чистку
 #  - name: customers_basic
 #    input: data/interim/cli_related/typed/public_customers_typed.parquet   # поддерживаются и glob-маски
 #    sample: null
@@ -21,7 +21,7 @@ datasets:
 #        cols: [customer_zip_code_prefix]                 # убираем префикс индекса
 #    output: data/processed/customers.proc.parquet
 
-# 2) Orders — примеры feature-группировок и понижения регистра
+# 2) Примеры feature-группировок и понижения регистра
 #  - name: orders_basic
 #    input: data/interim/public_data_typed.parquet
 #    steps:
@@ -36,7 +36,7 @@ datasets:
 #        prefix: "g_"                                     # добавлять префикс к новым фичам
 #    output: data/processed/orders.proc.parquet
 
-# 3) Payments — минимальная чистка
+# 3) Минимальная чистка
 #  - name: payments_basic
 #    input: data/interim/payments_typed.parquet
 #    steps:
@@ -48,7 +48,7 @@ datasets:
 
 # 4) (Опционально) Пример чтения из БД
 #  - name: sellers_from_db
-#    enabled: false                                       # включи, если нужно
+#    enabled: false                                       # включение
 #    reader: sql                                          # спец-ридер: возьмёт query + conn_env
 #    conn_env: OLIST_DB_URL                               # имя переменной окружения со строкой подключения
 #    query: |
@@ -68,6 +68,16 @@ datasets:
     steps:
       - op: lowercase_categoricals
         cat_cols: [payment_type]
+      - op: dropna_rows
+        subset: [order_id, payment_type]
+        how: any   # удалить строку, если ЛЮБОЕ из subset — NaN
+      - op: dropna_columns
+        cols: [installments, sequential]
+        min_missing_ratio: 0.4
+      - op: drop_duplicates
+        subset: all
+        keep: first
+        ignore_index: true
     output: data/interim/cli_related/basic/payments_basic.parquet
 
  # 2) Не включено в pipeline: product_measures
@@ -93,9 +103,21 @@ datasets:
     input: data/interim/cli_related/typed/public_data_typed.parquet
     sample: null
     steps:
-      - op: lowercase_categoricals                       # приведём регистр
+      - op: drop_columns
+        cols: [customer_zip_code_prefix, review_comment_title, review_comment_message]
+      - op: drop_duplicates
+        subset: all
+        keep: first
+        ignore_index: true
+      - op: dropna_columns
+        cols: [order_status, order_items_qty, order_sellers_qty, customer_city, customer_state, customer_zip_code_prefix, product_name_lenght, product_description_lenght, product_photos_qty, review_id]
+        min_missing_ratio: 0.4
+      - op: dropna_rows
+        subset: [order_id, order_status, order_products_value, order_freight_value, customer_id, product_id, order_delivered_customer_date, order_aproved_at]
+        how: any
+      - op: lowercase_categoricals
         cat_cols: [order_status, customer_city, customer_state, product_category_name]
-      - op: disambiguate_city_state                      # склейка города со штатом (разрешение омонимов)
+      - op: disambiguate_city_state
         city_col: customer_city
         state_col: customer_state
         suffix_sep: "_"
@@ -109,20 +131,28 @@ datasets:
         mean_cols:  [product_name_length, product_description_length]
         min_cols:   [review_creation_date, review_answer_timestamp]
         first_for_rest: true   # все остальные колонки агрегируем как first
-      - op: drop_columns
-        cols: [customer_zip_code_prefix, review_comment_title, review_comment_message]
     output: data/interim/cli_related/basic/public_data_basic.parquet
 
   # 5) sellers
   - name: sellers_basic
     input: data/interim/cli_related/typed/sellers_typed.parquet
     steps:
+      - op: dropna_rows
+        subset: [order_id, product_id, seller_id]
+        how: any
+      - op: drop_duplicates
+        subset: all
+        keep: first
+        ignore_index: true
       - op: lowercase_categoricals
         cat_cols: [seller_city, seller_state]
       - op: disambiguate_city_state
         city_col: seller_city
         state_col: seller_state
         suffix_sep: "_"
+      - op: dropna_columns
+        cols: [seller_city, seller_state]
+        min_missing_ratio: 0.4
       - op: drop_columns
         cols: [seller_zip_code_prefix]
     output: data/interim/cli_related/basic/sellers_basic.parquet
@@ -133,4 +163,11 @@ datasets:
     steps:
       - op: lowercase_categoricals
         cat_cols: [product_category_name, product_category_name_english]
+      - op: dropna_rows
+        subset: [product_category_name, product_category_name_english]
+        how: any
+      - op: drop_duplicates
+        subset: all
+        keep: first
+        ignore_index: true
     output: data/interim/cli_related/basic/translation_basic.parquet

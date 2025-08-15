@@ -112,6 +112,85 @@ def _apply_steps(
                  .agg(agg_dict)
                  .reset_index()
             )
+            
+        elif op == "dropna_rows":
+        # Удаление строк с пропусками.
+        # Параметры:
+        #   subset: str | list[str] — по каким колонкам проверять NaN (если не задано — по всем)
+        #   how: "any"|"all"        — удалить строку, если есть любой NaN ("any") или все NaN ("all")
+        #   thresh: int             — минимальное число НЕ-пустых значений, чтобы строка осталась (если задано, 'how' не используется)
+            subset = step.get("subset")
+            if isinstance(subset, str):
+                subset = [subset]
+
+            thresh = step.get("thresh", None)
+            before = len(X)
+
+            if thresh is not None:
+                # применяем по правилу "оставить строки с >= thresh непустыми значениями"
+                X = X.dropna(axis=0, subset=subset, thresh=int(thresh))
+            else:
+                how = step.get("how", "any")
+                X = X.dropna(axis=0, subset=subset, how=how)
+
+            removed = before - len(X)
+            if removed:
+                typer.echo(f"   • dropna_rows: removed {removed} rows")
+
+        elif op == "dropna_columns":
+        # Удаление столбцов.
+        # Режимы:
+        #   A) только cols -> удалить их безусловно
+        #   B) только min_missing_ratio -> удалить все колонки с NaN-дельтой >= порога
+        #   C) cols + min_missing_ratio -> проверить ТОЛЬКО cols и удалить те, где доля NaN >= порога
+            cols = step.get("cols")
+            if isinstance(cols, str):
+                cols = [cols]
+            min_ratio = step.get("min_missing_ratio", None)
+
+            to_drop = set()
+            if min_ratio is None:
+                # A) безусловный дроп перечисленных колонок
+                if cols:
+                    to_drop.update(cols)
+            else:
+                # B/C) пороговая логика
+                if cols:
+                    candidates = [c for c in cols if c in X.columns]
+                else:
+                    candidates = list(X.columns)
+                if candidates:
+                    ratios = X[candidates].isna().mean()
+                    auto_drop = ratios[ratios >= float(min_ratio)].index.tolist()
+                    to_drop.update(auto_drop)
+
+            if to_drop:
+                existing = [c for c in to_drop if c in X.columns]
+                if existing:
+                    X = X.drop(columns=existing, errors="ignore")
+                    typer.echo(f"   • dropna_columns: dropped {len(existing)} columns: {existing[:10]}{'...' if len(existing)>10 else ''}")
+
+
+        elif op == "drop_duplicates":
+            # Удаление дубликатов.
+            # Параметры (все опциональны):
+            #   subset: "all" | str | list[str] — по каким колонкам искать дубли ("all" = по всем)
+            #   keep: "first"|"last"|False      — какое вхождение оставить (дефолт 'first'; False = удалить все повторы)
+            #   ignore_index: bool              — пересоздать индексы (дефолт True)
+            subset = step.get("subset")
+            if subset == "all":
+                subset = None  # pandas: None => все колонки
+            elif isinstance(subset, str):
+                subset = [subset]
+
+            keep = step.get("keep", "first")
+            ignore_index = bool(step.get("ignore_index", True))
+
+            before = len(X)
+            X = X.drop_duplicates(subset=subset, keep=keep, ignore_index=ignore_index)
+            removed = before - len(X)
+            if removed:
+                typer.echo(f"   • drop_duplicates: removed {removed} rows")
 
         elif op == "rename_columns":
             # утилитарный шаг: {"old":"new", ...}
