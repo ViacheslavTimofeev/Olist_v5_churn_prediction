@@ -200,9 +200,62 @@ def _apply_steps(
         elif op == "drop_columns":
             cols = step["cols"]
             X = X.drop(columns=cols, errors="ignore")
+            
+        elif op == "select_columns":
+            include = step.get("include")
+            exclude = step.get("exclude")
+
+            if include and exclude:
+                raise typer.BadParameter("select_columns: use either 'include' or 'exclude', not both")
+
+            if include:
+                if isinstance(include, str):
+                    include = [include]
+                keep = [c for c in include if c in X.columns]
+                missing = sorted(set(include) - set(keep))
+                if missing:
+                    typer.echo(f"   • select_columns: missing {missing[:10]}{'...' if len(missing)>10 else ''}")
+                X = X[keep]
+            elif exclude:
+                if isinstance(exclude, str):
+                    exclude = [exclude]
+                X = X[[c for c in X.columns if c not in set(exclude)]]
+            else:
+                typer.echo("   • select_columns: nothing to do (no include/exclude)")
+
+        elif op == "join":
+            # Параметры:
+            #  right: str (путь к файлу .csv/.parquet)
+            #  on: str|list[str]  (или left_on/right_on)
+            #  how: left|inner|outer (по умолчанию left)
+            #  select: list[str]  — колонки правой таблицы, которые оставить (плюс ключи)
+            #  suffix_right: str  — суффикс для коллизий имён
+            right = step["right"]
+            how = step.get("how", "left")
+            on = step.get("on")
+            left_on = step.get("left_on")
+            right_on = step.get("right_on")
+            select = step.get("select")
+            suffix_right = step.get("suffix_right", "_r")
+
+            rdf = _load_df({"input": right})
+            if select:
+                keys = on if isinstance(on, list) else ([on] if on else [])
+                if left_on and right_on:
+                    keys = [right_on] if isinstance(right_on, str) else list(right_on)
+                keep = list(dict.fromkeys(list(keys) + list(select)))
+                rdf = rdf[[c for c in keep if c in rdf.columns]]
+
+            prev_cols = set(X.columns)
+            if on:
+                X = X.merge(rdf, how=how, on=on, suffixes=(None, suffix_right))
+            else:
+                X = X.merge(rdf, how=how, left_on=left_on, right_on=right_on, suffixes=(None, suffix_right))
+            typer.echo(f"   • join {Path(right).name}: +{len([c for c in X.columns if c not in prev_cols])} cols")
 
         else:
             raise ValueError(f"Unknown op '{op}' in step #{i}")
+            
 
     return X
 

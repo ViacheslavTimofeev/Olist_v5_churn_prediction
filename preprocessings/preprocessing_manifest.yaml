@@ -1,6 +1,25 @@
 defaults:
   sample: null         # можно поставить 0.1 для дебага, чтобы брать 10% строк
 
+colsets:
+  baseline: &baseline_cols
+    - customer_state
+    - seller_state
+    - order_products_value
+    - order_freight_value
+    - order_items_qty
+    - product_photos_qty
+    - product_name_length
+    - product_description_length
+    - review_score
+    - summary_payments_value
+    - installments
+    - sequential
+    - product_weight_g
+    - product_length_cm
+    - product_height_cm
+    - product_width_cm 
+
 datasets:
 # Примеры:
 # 1) Читаем типизированный parquet и делаем базовую чистку
@@ -61,57 +80,71 @@ datasets:
 #        state_col: seller_state
 #    output: data/processed/sellers.proc.parquet
 
- # 1) payments_typed
+ # 1) payments
   - name: payments_basic
     input: data/interim/cli_related/typed/payments_typed.parquet
     sample: null
     steps:
       - op: lowercase_categoricals
         cat_cols: [payment_type]
+      #- op: drop_columns
+      #  cols: [installments, sequential, payment_type]
       - op: dropna_rows
         subset: [order_id, payment_type]
         how: any   # удалить строку, если ЛЮБОЕ из subset — NaN
-      - op: dropna_columns
-        cols: [installments, sequential]
-        min_missing_ratio: 0.4
+      - op: rename_columns
+        mapping:
+          value: summary_payments_value
       - op: drop_duplicates
         subset: all
         keep: first
         ignore_index: true
+      - op: groupby_aggregate
+        by: order_id
+        sum_cols: [sequential, summary_payments_value]
+        first_for_rest: true   # все остальные колонки агрегируем как first
     output: data/interim/cli_related/basic/payments_basic.parquet
 
- # 2) Не включено в pipeline: product_measures
- # - name: product_measures_basic
- #   input: data/interim/cli_related/typed/product_measures_typed.parquet
- #   sample: null
- #   steps:
- #     - op: lowercase_categoricals
- #       cat_cols: [product_id]
- #   output: data/interim/cli_related/basic/product_measures_basic.parquet
+ # 2) product_measures
+  - name: product_measures_basic
+    input: data/interim/cli_related/typed/product_measures_typed.parquet
+    steps:
+      - op: dropna_rows
+        subset: [product_id, product_weight_g, product_length_cm, product_height_cm, product_width_cm]
+        how: any
+      - op: drop_duplicates
+        subset: all
+        keep: first
+        ignore_index: true
+    output: data/interim/cli_related/basic/product_measures_basic.parquet
 
- # 3) Не включено в pipeline: public_customers_typed
- # - name: customers_basic
- #   input: data/interim/cli_related/typed/public_customers_typed.parquet
- #   sample: null
- #   steps:
- #     - op: lowercase_categoricals
- #       cat_cols: [customer_id, customer_unique_id]
- #   output: data/interim/cli_related/basic/public_customers_basic.parquet
+ # 3) public_customers_typed
+  - name: customers_basic
+    input: data/interim/cli_related/typed/public_customers_typed.parquet
+    steps:
+      - op: dropna_rows
+        subset: [customer_id, customer_unique_id]
+        how: any
+      - op: drop_duplicates
+        subset: all
+        keep: first
+        ignore_index: true
+    output: data/interim/cli_related/basic/public_customers_basic.parquet
 
   # 4) public_data
   - name: public_data_basic
     input: data/interim/cli_related/typed/public_data_typed.parquet
     sample: null
     steps:
-      - op: drop_columns
-        cols: [customer_zip_code_prefix, review_comment_title, review_comment_message]
+      #- op: drop_columns
+      #  cols: [customer_zip_code_prefix, review_comment_title, review_comment_message]
       - op: drop_duplicates
         subset: all
         keep: first
         ignore_index: true
-      - op: dropna_columns
-        cols: [order_status, order_items_qty, order_sellers_qty, customer_city, customer_state, customer_zip_code_prefix, product_name_lenght, product_description_lenght, product_photos_qty, review_id]
-        min_missing_ratio: 0.4
+      #- op: dropna_columns
+      #  cols: [order_status, order_items_qty, order_sellers_qty, customer_city, customer_state, customer_zip_code_prefix, product_name_lenght, product_description_lenght, product_photos_qty, review_id]
+      #  min_missing_ratio: 0.4
       - op: dropna_rows
         subset: [order_id, order_status, order_products_value, order_freight_value, customer_id, product_id, order_delivered_customer_date, order_aproved_at]
         how: any
@@ -137,6 +170,11 @@ datasets:
   - name: sellers_basic
     input: data/interim/cli_related/typed/sellers_typed.parquet
     steps:
+      #- op: dropna_columns
+      #  cols: [seller_city, seller_state]
+      #  min_missing_ratio: 0.4
+      #- op: drop_columns
+      #  cols: [seller_zip_code_prefix]
       - op: dropna_rows
         subset: [order_id, product_id, seller_id]
         how: any
@@ -150,11 +188,6 @@ datasets:
         city_col: seller_city
         state_col: seller_state
         suffix_sep: "_"
-      - op: dropna_columns
-        cols: [seller_city, seller_state]
-        min_missing_ratio: 0.4
-      - op: drop_columns
-        cols: [seller_zip_code_prefix]
     output: data/interim/cli_related/basic/sellers_basic.parquet
 
   # 6) translation
@@ -171,3 +204,58 @@ datasets:
         keep: first
         ignore_index: true
     output: data/interim/cli_related/basic/translation_basic.parquet
+
+  # 7) merged-датасет после всех обработок
+  - name: master_basic
+    input: data/interim/cli_related/basic/public_data_basic.parquet   # база
+    steps:
+      - op: join
+        right: data/interim/cli_related/basic/payments_basic.parquet
+        on: [order_id]
+        how: left
+        suffix_right: _pay
+
+      - op: join
+        right: data/interim/cli_related/basic/product_measures_basic.parquet
+        on: [product_id]
+        how: left
+        suffix_right: _prod
+
+      - op: join
+        right: data/interim/cli_related/basic/public_customers_basic.parquet
+        on: [customer_id]
+        how: left
+        suffix_right: _prod
+
+      - op: join
+        right: data/interim/cli_related/basic/sellers_basic.parquet
+        on: [order_id, product_id]
+        how: left
+        suffix_right: _sel
+
+      - op: join
+        right: data/interim/cli_related/basic/translation_basic.parquet
+        on: [product_category_name]
+        how: left
+        suffix_right: _tr
+    output: data/processed/cli_related/master_basic.parquet
+
+  # 8) Промежуточный «clean»: обработанные пропуски/дубли (без сужения колонок)
+  - name: master_clean
+    input: data/processed/cli_related/master_basic.parquet
+    steps:
+      - op: drop_duplicates
+        subset: all
+      - op: drop_columns
+        cols: [review_comment_message, review_comment_title]
+      - op: dropna_rows
+        how: any
+    output: data/processed/cli_related/master_clean.parquet
+
+  # 9) Базовый датасет из «clean»
+  - name: baseline_dataset
+    input: data/processed/cli_related/master_clean.parquet
+    steps:
+      - op: select_columns
+        include: *baseline_cols
+    output: data/processed/baseline_dataset.parquet
