@@ -1,4 +1,4 @@
-oist-ml
+olist-ml
 ==============================
 
 Prediction of churn rate in e-commerce
