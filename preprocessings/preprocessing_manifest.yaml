@@ -247,7 +247,7 @@ datasets:
       - op: drop_duplicates
         subset: all
       - op: drop_columns
-        cols: [review_comment_message, review_comment_title]
+        cols: [review_comment_message, review_comment_title, order_status]
       - op: dropna_rows
         how: any
     output: data/processed/cli_related/master_clean.parquet
