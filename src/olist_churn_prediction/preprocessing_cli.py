@@ -3,7 +3,7 @@ import json, glob, os, yaml, typer
 from pathlib import Path
 from typing import Dict, Any, Union, List, Callable
 import pandas as pd
-
+from olist_churn_prediction.targets import create_churn_label
 from olist_churn_prediction import feature_processing as fp  # lowercase_categoricals, disambiguate_city_state, group_by_features
 
 app = typer.Typer(help="Preprocessing pipeline CLI (manifest-driven)")
@@ -337,6 +337,40 @@ def run(manifest: str = typer.Option("preprocessings/preprocessing_manifest.yaml
         raise typer.Exit(code=1)
 
     typer.echo("✅ Все датасеты успешно предобработаны")
+    
+@app.command("label")
+def make_label(
+    input_path: Path = typer.Option(..., help="Путь к мастер-датасету после join-ов"),
+    output_path: Path = typer.Option(..., help="Куда сохранить с таргетом"),
+    customer_col: str = "customer_id",
+    purchase_ts_col: str = "order_purchase_timestamp",
+    target_col: str = "churned",
+    horizon_days: int = 120,
+    reference_date: str = "max",  # "max" или '2018-09-01'
+    filter_status_col: str = "order_status",
+    keep_statuses: str = "delivered",  # через запятую для нескольких
+    force: bool = False,
+):
+    df = pd.read_parquet(input_path) if input_path.suffix==".parquet" else pd.read_csv(input_path)
+    ks = tuple(s.strip() for s in keep_statuses.split(",")) if keep_statuses else None
 
+    df_out = create_churn_label(
+        df,
+        customer_col=customer_col,
+        purchase_ts_col=purchase_ts_col,
+        target_col=target_col,
+        horizon_days=horizon_days,
+        reference_date=reference_date,
+        filter_status_col=filter_status_col,
+        keep_statuses=ks,
+        force=force,
+    )
+
+    if output_path.suffix==".parquet":
+        df_out.to_parquet(output_path, index=False)
+    else:
+        df_out.to_csv(output_path, index=False)
+    typer.echo(f"Saved with target to: {output_path}")
+    
 if __name__ == "__main__":
     app()
