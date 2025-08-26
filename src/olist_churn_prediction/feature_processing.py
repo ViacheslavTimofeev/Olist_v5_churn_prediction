@@ -32,20 +32,16 @@ def lowercase_categoricals(
     cat_cols: Iterable[str] | None = None,
     inplace: bool = False
 ) -> pd.DataFrame:
-    """
-    Приводит строковые/категориальные колонки к нижнему регистру и заменяет пробелы на '_'.
+    """Приводит строковые/категориальные колонки к нижнему регистру и заменяет пробелы на ``_``.
 
-    Параметры
-    ---------
-    df : pd.DataFrame
-    cat_cols : Iterable[str] | None
-        Если None — берём все строковые/категориальные столбцы автоматически.
-    inplace : bool
-        Если True — модифицируем исходный df, иначе возвращаем копию.
+    Args:
+        df (pd.DataFrame): Входной датафрейм.
+        cat_cols (Iterable[str] | None): Явный список колонок.  
+            Если ``None`` — берём все строковые/категориальные столбцы автоматически.
+        inplace (bool): Если ``True`` — модифицируем исходный ``df``, иначе возвращаем копию.
 
-    Возвращает
-    ----------
-    pd.DataFrame
+    Returns:
+        pd.DataFrame: Датафрейм с обновлёнными значениями категориальных колонок.
     """
     target = df if inplace else df.copy()
     cat_cols = list(cat_cols) if cat_cols is not None else _infer_categoricals(target)
@@ -84,16 +80,22 @@ def disambiguate_city_state(
     suffix_sep: str = "_",
     inplace: bool = False
 ) -> pd.DataFrame:
-    """
-    Разрешает неоднозначность городов, добавляя к одноимённым городам суффикс штата/региона.
+    """Разрешает неоднозначность городов, добавляя к одноимённым городам суффикс штата/региона.
 
-    Пример:
-    - 'paris' из разных штатов → 'paris_sp', 'paris_rj'
+    Например:
+        - ``paris`` из разных штатов → ``paris_sp``, ``paris_rj``.
 
-    Требует, чтобы city_col и state_col уже были приведены к нижнему регистру
-    (можно вызвать перед этим lowercase_categoricals).
+    Требует, чтобы ``city_col`` и ``state_col`` уже были приведены к нижнему регистру
+    (можно вызвать перед этим ``lowercase_categoricals``).
 
-    Возвращает df с обновлённой колонкой city_col.
+    Args:
+        df (pd.DataFrame): Входной датафрейм.
+        city_col (str): Имя колонки с городами.
+        state_col (str): Имя колонки с регионами/штатами.
+        suffix_sep (str): Разделитель между названием города и регионом (по умолчанию ``"_"``).
+
+    Returns:
+        pd.DataFrame: Датафрейм с обновлённой колонкой ``city_col``.
     """
     target = df if inplace else df.copy()
 
@@ -130,25 +132,23 @@ def group_by_features(
     keep_original: bool = False,
     prefix: str | None = None,
 ) -> pd.DataFrame:
-    """
-    Построчные агрегации признаков (по колонкам), с гибкими функциями.
+    """Построчные агрегации признаков (по колонкам), с гибкими функциями.
 
-    Параметры
-    ---------
-    group_mapping : dict
-        {"new_feature_name": ["col1", "col2", ...], ...}
-        или {"new_feature_name": "col"}.
-    agg_funcs :
-        - строка: одна agg-функция для всех групп ("sum", "mean", "max", ...),
-        - callable: одна функция для всех групп,
-        - список: по порядку для каждой группы,
-        - dict: {"new_feature_name": "sum" | callable, ...}
-    keep_original : оставить ли исходные колонки.
-    prefix : префикс для новых колонок.
+    Args:
+        df (pd.DataFrame): Входной датафрейм.
+        group_mapping (dict):  
+            - ``{"new_feature": ["col1", "col2", ...], ...}``  
+            - или ``{"new_feature": "col"}``.
+        agg_funcs (str | callable | list | dict, optional):  
+            - строка: одна agg-функция для всех групп (``"sum"``, ``"mean"``, ``"max"`` и др.),  
+            - callable: одна функция для всех групп,  
+            - список: список функций по порядку для каждой группы,  
+            - dict: ``{"new_feature": "sum" | callable, ...}``.
+        keep_original (bool): Если ``True`` — оставить исходные колонки.
+        prefix (str | None): Префикс для новых колонок.
 
-    Возвращает
-    ----------
-    pd.DataFrame
+    Returns:
+        pd.DataFrame: Датафрейм с добавленными агрегированными признаками.
     """
     df_out = df.copy()
 

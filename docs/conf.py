@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# oist-ml documentation build configuration file, created by
+# olist-ml documentation build configuration file, created by
 # sphinx-quickstart.
 #
 # This file is execfile()d with the current directory set to its containing dir.
@@ -14,6 +14,11 @@
 import os
 import sys
 
+# корень проекта
+sys.path.insert(0, os.path.abspath('..'))
+# папка src (чтобы import olist_churn_prediction находился)
+sys.path.insert(0, os.path.abspath('../src'))
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
@@ -26,7 +31,33 @@ import sys
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = []
+#autodoc_mock_imports = [
+#    "mlflow", "sklearn", "pandas", "numpy", "joblib", "yaml", "sqlalchemy"
+#]
+
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",           # Google/NumPy docstring
+    "sphinx_autodoc_typehints",      # типы в сигнатурах
+    # "myst_parser",                 # ← включи, если хочешь .md
+    "sphinx_click",                  # ← включи, если документируешь CLI на Click/Typer
+]
+
+autosummary_generate = True
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+napoleon_use_param = True
+napoleon_use_rtype = True
+
+# Общие настройки автодока — чтобы меньше шума в API
+autodoc_default_options = {
+    "members": True,              # показывать публичные
+    "undoc-members": False,
+    "private-members": False,     # НЕ тащим _вспомогательные по умолчанию
+    "show-inheritance": False,
+    "exclude-members": "app,main",  # <— прячем Typer-приложение и точку входа
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -41,7 +72,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'oist-ml'
+project = u'olist-ml'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -91,7 +122,7 @@ pygments_style = 'sphinx'
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'default'
+html_theme = 'sphinx_rtd_theme'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -185,7 +216,7 @@ latex_elements = {
 latex_documents = [
     ('index',
      'olist-ml-churn-prediction.tex',
-     u'oist-ml Documentation',
+     u'olist-ml Documentation',
      u"vyacheslav", 'manual'),
 ]
 
@@ -215,7 +246,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'olist-ml-churn-prediction', u'oist-ml Documentation',
+    ('index', 'olist-ml-churn-prediction', u'olist-ml Documentation',
      [u"vyacheslav"], 1)
 ]
 
@@ -229,8 +260,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    ('index', 'olist-ml-churn-prediction', u'oist-ml Documentation',
-     u"vyacheslav", 'oist-ml',
+    ('index', 'olist-ml-churn-prediction', u'olist-ml Documentation',
+     u"vyacheslav", 'olist-ml',
      'Prediction of churn rate in e-commerce', 'Miscellaneous'),
 ]
 

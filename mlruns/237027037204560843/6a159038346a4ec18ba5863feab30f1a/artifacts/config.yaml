@@ -1,0 +1,20 @@
+data_path: data/processed/baseline_dataset.parquet
+target: churned
+id_cols: []
+numeric_features: []
+categorical_features: []
+model:
+  name: rf
+  params: null
+test_size: 0.2
+random_state: 42
+output_dir: artifacts/baseline
+cv:
+  n_splits: 5
+mlflow:
+  enabled: true
+  tracking_uri: file:./mlruns
+  experiment: olist_baseline_cli
+  run_name: baseline_rf
+  autolog: true
+  log_model: true

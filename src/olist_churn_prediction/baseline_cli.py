@@ -1,50 +1,7 @@
+"""Сборка baseline-пайплайна и утилиты для обучения/оценки.
+
+Содержит билдеры препроцессинга и моделей, а также команды Typer (dry_run, cv, fit, predict).
 """
-baseline_cli.py — CLI для сборки/оценки baseline-пайплайна (ColumnTransformer + Pipeline)
-
-✔ Умеет:
-- автоматический инференс колонок (numeric/categorical)
-- препроцессинг: SimpleImputer + StandardScaler (num), SimpleImputer + OneHotEncoder (cat)
-- модели: логистическая регрессия (по умолчанию) или RandomForest
-- кросс-валидация (cv) и holdout fit с сохранением артефактов
-- **MLflow-логирование** (по желанию): метрики, параметры, конфиг, пайплайн как модель
-
-Зависимости: pandas, numpy, scikit-learn>=1.3, pyyaml, joblib, typer, (опционально) mlflow
-
-Пример конфига (configs/baseline.yaml):
---------------------------------------
-# data & columns
-data_path: "data/processed/baseline.parquet"  # .csv тоже поддерживается
-target: "target"
-id_cols: ["row_id"]
-numeric_features: []            # опционально, оставить пустым чтобы инферить
-categorical_features: []        # опционально, оставить пустым чтобы инферить
-
-# model
-model:
-  name: "logreg"   # варианты: logreg, rf
-  params:
-    C: 1.0
-    penalty: "l2"
-    class_weight: null   # или "balanced"
-
-# train & eval
-test_size: 0.2
-random_state: 42
-output_dir: "artifacts/baseline"
-cv:
-  n_splits: 5
-
-# MLflow (опционально)
-mlflow:
-  enabled: true
-  tracking_uri: "file:./mlruns"   # или http(s)://... для сервера
-  experiment: "olist_baseline"
-  run_name: "baseline_logreg"
-  autolog: true                  # в fit() включит mlflow.sklearn.autolog
-  log_model: true                # логировать sklearn-пайплайн как модель
---------------------------------------
-"""
-
 from __future__ import annotations
 
 import json
@@ -55,9 +12,10 @@ import joblib
 import numpy as np
 import pandas as pd
 import typer
+from typer.main import get_command
 import yaml
 
-# MLflow (опционально)
+# MLflow
 try:
     import mlflow
     import mlflow.sklearn
@@ -81,8 +39,6 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
-
-
 # ------------------------------
 # Utils
 # ------------------------------
@@ -117,7 +73,6 @@ def _choose_scoring(y: pd.Series) -> List[str]:
     classes = y.dropna().unique()
     if len(classes) <= 2:
         return [
-            "accuracy",
             "f1",
             "precision",
             "recall",
@@ -126,7 +81,6 @@ def _choose_scoring(y: pd.Series) -> List[str]:
     else:
         # Для мультикласса
         return [
-            "accuracy",
             "f1_macro",
             "precision_macro",
             "recall_macro",
@@ -151,11 +105,11 @@ def _build_model(name: str, params: dict):
 
 def _build_preprocessor(numeric_features: List[str], categorical_features: List[str], *, sparse_ohe: bool = True) -> ColumnTransformer:
     num_pipe = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
+        ("imputer", SimpleImputer(strategy="median")), # заполнение ппропусков для num features
         ("scaler", StandardScaler()),
     ])
     cat_pipe = Pipeline([
-        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("imputer", SimpleImputer(strategy="most_frequent")), # заполнение пропусков для cat features
         # ВАЖНО: в новых версиях sklearn используем sparse_output
         ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=sparse_ohe, dtype=np.float32)),
     ])
@@ -213,10 +167,8 @@ def _mlflow_log_config_and_features(cfg: dict, num_cols: list[str], cat_cols: li
     # логируем списки колонок отдельным артефактом
     try:
         text = (
-            f"numeric_features ({len(num_cols)}): {num_cols}
-" \
-            f"categorical_features ({len(cat_cols)}): {cat_cols}
-"
+            f"numeric_features ({len(num_cols)}): {num_cols}"
+            f"categorical_features ({len(cat_cols)}): {cat_cols}"
         )
         mlflow.log_text(text, "features.txt")
     except Exception:
@@ -228,6 +180,18 @@ def _mlflow_log_config_and_features(cfg: dict, num_cols: list[str], cat_cols: li
 # ------------------------------
 
 def build_pipeline(config: dict, df: Optional[pd.DataFrame] = None) -> Tuple[Pipeline, List[str], List[str]]:
+    """Собирает sklearn-пайплайн из YAML-конфига.
+
+    Args:
+        config: Конфиг с ключами `target`, `id_cols`, `model`, `numeric_features`, `categorical_features`, `cv`, `random_state`, `output_dir`.
+        df: Необязательный сэмпл данных для авто-инференса типов колонок, если списки фич в конфиге не заданы.
+
+    Returns:
+        Tuple[pipeline, numeric_features, categorical_features].
+
+    Raises:
+        ValueError: Если указана неизвестная модель в `config["model"]["name"]`.
+    """
     target = config["target"]
     id_cols = config.get("id_cols", [])
 
@@ -297,7 +261,7 @@ def cv(config: str = typer.Option(..., help="Путь к YAML-конфигу")):
     skf = StratifiedKFold(n_splits=cfg.get("cv", {}).get("n_splits", 5), shuffle=True, random_state=cfg.get("random_state", 42))
     scoring = _choose_scoring(y)
 
-    # MLflow — опционально
+    # MLflow
     use_mlflow = _mlflow_init(cfg)
     run_ctx = mlflow.start_run(run_name=cfg.get("mlflow", {}).get("run_name", "cv")) if use_mlflow else None
     try:
@@ -498,7 +462,8 @@ def predict(
     out_path = Path(out_path) if out_path else Path(pipeline_path).with_name("predictions.csv")
     out.to_csv(out_path, index=False)
     typer.echo(f"Saved predictions to: {out_path}")
-
+    
+cli = get_command(app)
 
 if __name__ == "__main__":
     app()

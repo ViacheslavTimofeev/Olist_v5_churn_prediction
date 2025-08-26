@@ -1,4 +1,5 @@
 import json, pathlib, typer, numpy as np
+from typer.main import get_command
 import pandas as pd, pathlib, json
 from pathlib import Path
 import pandera as pa
@@ -16,15 +17,19 @@ def _quant_bounds(x: pd.Series, qlow=0.01, qhigh=0.99, pad=0.1):
     span = hi - lo if np.isfinite(hi - lo) else 0  # span - ширина ядра распределения
     return float(lo - pad*span), float(hi + pad*span) # возвращает расширенные границы: ниже lo и выше hi на 10% ширины диапазона. Это «мягкие» рамки, чтобы не заваливать валидацию редкими, но нормальными значениями.
 
-''' объявление CLI-команды profile '''
 @app.command()
 def profile(input: str, name: str = None, out_dir: str = "validations"):
-    """
-    Собирает профиль (suite) по датасету.
-    - input: путь к файлу (csv/parquet)
-    - name: (опц.) логическое имя датасета; влияет на имя файла suite.
-            Если не задано — берём stem input.
-    - out_dir: корневая папка для validations
+    """Собирает профиль (suite) по датасету.
+
+    Args:
+        input (str): Путь к файлу датасета (``.csv`` или ``.parquet``).
+        name (str, optional): Логическое имя датасета.  
+            Влияет на имя файла suite. Если не задано — используется ``stem`` от ``input``.
+        out_dir (str, optional): Корневая папка для сохранения результатов валидации. 
+            По умолчанию ``"validations"``.
+
+    Returns:
+        None
     """
     # читаем данные
     if input.endswith(".parquet"):
@@ -57,7 +62,6 @@ def profile(input: str, name: str = None, out_dir: str = "validations"):
 
     typer.echo(f"✅ Профиль сохранён: {out_path}")
 
-''' объявление CLI-команды validate '''
 @app.command()
 def validate(input: str, suite_path: str, report_dir: str = "validations/reports",
              null_delta_pp: float = 5.0, new_cat_ratio: float = 0.02):
@@ -143,9 +147,22 @@ def profile_all(manifest: str = "validations/validation_manifest.yaml"):
 
 # --- helpers: core validator for one DataFrame based on a saved suite ---
 def _validate_df_core(df, suite_path, ds=None, defaults=None):
-    """
-    Возвращает список ошибок (list[str]) для df по правилам из suite_path.
-    Не кидает Exit и ничего не печатает — чистая логика.
+    """Проверяет DataFrame по сохранённому профилю (suite) и порогам.
+
+    Проверяются структура (missing/extra columns), доля пропусков,
+    границы для числовых/датовых колонок и новизна категорий.
+
+    Args:
+        df: Датафрейм для проверки.
+        suite_path: Путь к JSON-профилю (suite) с базовыми метаданными.
+        ds: Переопределения порогов на уровне датасета (например, `thresholds`, `columns`, `strict_structure`).
+        defaults: Глобальные значения по умолчанию для валидации.
+
+    Returns:
+        Список строк с найденными ошибками (пустой список — валидация пройдена).
+
+    Raises:
+        Exception: При ошибках чтения suite или внутренних преобразованиях.
     """
     defaults = defaults or {}
     # Базовые пороги
@@ -240,11 +257,6 @@ def _validate_df_core(df, suite_path, ds=None, defaults=None):
 # --- command: validate-all (без внешних зависимостей на _validate_df_core) ---
 @app.command()
 def validate_all(manifest: str = "validations/validation_manifest.yaml"):
-    """
-    Валидирует все датасеты из validation_manifest.yaml, используя внешнюю _load_df(ds).      
-    Печатает статус по каждому датасету и возвращает exit code 1 при любых
-    ошибках.
-    """
     cfg = yaml.safe_load(Path(manifest).read_text())
     defaults_validate = (cfg.get("defaults") or {}).get("validate", {})
     errors_total: list[str] = []
@@ -303,6 +315,8 @@ def validate_all(manifest: str = "validations/validation_manifest.yaml"):
         raise typer.Exit(code=1)
 
     typer.echo("✅ Все таблицы прошли валидацию")
+    
+cli = get_command(app)
 
 if __name__ == "__main__":
     app()
