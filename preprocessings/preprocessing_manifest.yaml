@@ -18,7 +18,8 @@ colsets:
     - product_weight_g
     - product_length_cm
     - product_height_cm
-    - product_width_cm 
+    - product_width_cm
+    - churned 
 
 datasets:
 # Примеры:
@@ -252,9 +253,9 @@ datasets:
         how: any
     output: data/processed/cli_related/master_clean.parquet
 
-  # 9) Базовый датасет из «clean»
+  # 9) Базовый датасет из «clean». 
   - name: baseline_dataset
-    input: data/processed/cli_related/master_clean.parquet
+    input: data/processed/cli_related/master_clean_churned.parquet  # churned-датасет создается с помощью CLI
     steps:
       - op: select_columns
         include: *baseline_cols

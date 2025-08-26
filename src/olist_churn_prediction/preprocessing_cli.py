@@ -1,5 +1,11 @@
+"""preprocessing_cli — манифест-driven предобработка.
+
+Содержит загрузчик/сохранялку датасетов и функцию `_apply_steps()`,
+которую используют CLI-команды `apply` и `run`.
+"""
 from __future__ import annotations
 import json, glob, os, yaml, typer
+from typer.main import get_command
 from pathlib import Path
 from typing import Dict, Any, Union, List, Callable
 import pandas as pd
@@ -10,10 +16,27 @@ app = typer.Typer(help="Preprocessing pipeline CLI (manifest-driven)")
 
 ''' Загрузка/сохранение — по мотивам validator_cli.py '''
 def _load_df(entry: Dict[str, Any]) -> pd.DataFrame:
-    """
-    Совместимый загрузчик как в validator_cli.py:
-      - file: input с glob-маской (берём самый свежий)
-      - sql:  query + conn_env (строка подключения в переменной окружения)
+    """Загружает DataFrame по описанию источника (совместимо с ``validator_cli.py``).
+
+    Поддерживаемые режимы:
+        - ``"file"``: читает последний по времени файл по glob-маске из ``entry["input"]``.
+        - ``"sql"``: выполняет SQL-запрос ``entry["query"]`` с использованием строки подключения
+          из переменной окружения ``entry["conn_env"]``.
+
+    Args:
+        entry (Dict[str, Any]): Описание источника данных. Ключи:
+            - ``reader`` (str, optional): ``"file"`` или ``"sql"``. По умолчанию ``"file"``.
+            - для ``"file"``: ``input`` (str) — glob-маска пути к файлам.
+            - для ``"sql"``: ``query`` (str) и ``conn_env`` (str) — имя переменной окружения
+              со строкой подключения.
+
+    Returns:
+        pd.DataFrame: Загруженные данные.
+
+    Raises:
+        KeyError: Если отсутствуют обязательные ключи для выбранного режима.
+        FileNotFoundError: Если по glob-маске не найдено ни одного файла.
+        ValueError: Если указан неподдерживаемый ``reader``.
     """
     reader = entry.get("reader", "file")
     if reader == "sql":
@@ -40,9 +63,22 @@ def _apply_steps(
     steps: List[Dict[str, Any]],
     defaults: Dict[str, Any] | None = None,
 ) -> pd.DataFrame:
-    """
-    Применяет последовательность шагов к DataFrame.
-    Каждый шаг — dict с ключом 'op' и параметрами. Примеры см. ниже.
+    """Применяет последовательность шагов предобработки к DataFrame.
+
+    Поддерживаемые шаги: `lowercase_categoricals`, `disambiguate_city_state`,
+    `group_by_features`, `groupby_aggregate`, `dropna_rows`, `dropna_columns`,
+    `drop_duplicates`, `rename_columns`, `drop_columns`, `select_columns`, `join`.
+
+    Args:
+        df: Исходный датафрейм.
+        steps: Список операций (каждый элемент — dict с ключом `op` и параметрами).
+        defaults: Глобальные значения по умолчанию для манифеста.
+
+    Returns:
+        Обновлённый DataFrame после применения всех шагов.
+
+    Raises:
+        ValueError: Если шаг не содержит ключ `op` или указан неизвестный `op`.
     """
     defaults = defaults or {}
     X = df
@@ -268,11 +304,20 @@ def apply(
     steps_json: str = typer.Option(None, help="JSON со списком шагов"),
     sample: float = typer.Option(None, help="Доля сэмпла для отладки, напр. 0.1"),
 ):
-    """
-    Применить шаги предобработки к одному датасету (без манифеста).
-    Пример:
-      preproc apply data/raw.csv data/interim/cli_related/clean.parquet \\
-        --steps-json '[{"op":"lowercase_categoricals", "cat_cols":["customer_city", "customer_state"]}]'
+    """Применить шаги предобработки к одному датасету (без манифеста).
+
+    Example:
+        >>> preproc apply data/raw.csv data/interim/cli_related/clean.parquet \
+        ...   --steps-json '[{"op":"lowercase_categoricals", "cat_cols":["customer_city"]}]'
+
+    Args:
+        input (str): Входной файл (.csv или .parquet).
+        output (str): Куда сохранить результат.
+        steps_json (str | None): JSON со списком шагов предобработки.
+        sample (float | None): Доля сэмпла для отладки, например ``0.1``.
+    
+    Returns:
+        None
     """
     df = pd.read_parquet(input) if input.endswith(".parquet") else pd.read_csv(input)
     if sample:
@@ -372,5 +417,7 @@ def make_label(
         df_out.to_csv(output_path, index=False)
     typer.echo(f"Saved with target to: {output_path}")
     
+cli = get_command(app)
+
 if __name__ == "__main__":
     app()

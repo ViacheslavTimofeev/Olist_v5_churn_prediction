@@ -3,10 +3,12 @@ from pathlib import Path
 from typing import Dict, Any
 
 import typer
+from typer.main import get_command
 import yaml
 import pandas as pd
 
 app = typer.Typer(add_completion=False)
+
 
 def _ensure_columns(df: pd.DataFrame, schema_cols: set, keep_unknown: bool):
     missing = schema_cols - set(df.columns)
@@ -53,6 +55,22 @@ def _cast_category(s: pd.Series, cats: list[str]|None, ordered: bool=False) -> p
     return s.astype("category")
 
 def _cast_col(df: pd.DataFrame, col: str, spec: Dict[str, Any], mode: str) -> pd.Series:
+    """Приводит одну колонку к типу по спецификации схемы.
+
+    Поддерживаемые типы: string, int, float, bool, datetime, category.
+
+    Args:
+        df: Датафрейм с исходными данными.
+        col: Имя колонки.
+        spec: Спецификация для колонки (ключ `type`, опции: `nullable`, `format`, `drop_tz`, `categories`, `ordered`).
+        mode: Режим ошибок: "strict" (ошибки — исключения) или "coerce" (некорректные значения -> NaN/NaT).
+
+    Returns:
+        Преобразованная серия.
+
+    Raises:
+        ValueError: Если указан неподдерживаемый тип или приведение в strict-режиме невозможно.
+    """
     t = spec["type"]
     if t == "string":
         return _cast_string(df[col])
@@ -160,6 +178,8 @@ def cast_all(manifest: Path = typer.Argument("validations/validation_manifest.ya
 
     if errors and not fail_fast:
         raise SystemExit(1)
+        
+cli = get_command(app)
 
 if __name__ == "__main__":
     app()

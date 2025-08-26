@@ -1,10 +1,30 @@
-Commands
-========
+CLI Commands
+============
 
-The Makefile contains the central entry points for common tasks related to this project.
+Baseline
+--------
 
-Syncing data to S3
-^^^^^^^^^^^^^^^^^^
+.. click:: olist_churn_prediction.baseline_cli:cli
+   :prog: baseline
+   :show-nested:
 
-* `make sync_data_to_s3` will use `aws s3 sync` to recursively sync files in `data/` up to `s3://[OPTIONAL] your-bucket-for-syncing-data (do not include 's3://')/data/`.
-* `make sync_data_from_s3` will use `aws s3 sync` to recursively sync files from `s3://[OPTIONAL] your-bucket-for-syncing-data (do not include 's3://')/data/` to `data/`.
+Preprocessing
+-------------
+
+.. click:: olist_churn_prediction.preprocessing_cli:cli
+   :prog: preproc
+   :show-nested:
+
+Types (cast)
+------------
+
+.. click:: olist_churn_prediction.types_cli:cli
+   :prog: types
+   :show-nested:
+
+Validation
+----------
+
+.. click:: olist_churn_prediction.validator_cli:cli
+   :prog: validate
+   :show-nested:
