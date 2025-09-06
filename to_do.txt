@@ -1,2 +1,0 @@
-1. Обновить pyproject.toml
-2. 

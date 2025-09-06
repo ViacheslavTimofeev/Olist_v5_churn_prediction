@@ -1,43 +1,91 @@
-import json, pathlib, typer, numpy as np
-from typer.main import get_command
-import pandas as pd, pathlib, json
+"""CLI и ядро валидации датасетов проекта Olist Churn.
+
+Этот модуль содержит команды CLI (Typer) и внутренние утилиты для:
+- построения *suite* (профиля) датасета по наблюдаемой структуре и статистикам,
+- проверки датасета на расхождения со *suite* (структура, пропуски, выход за
+числовые/датовые границы, появление новых категорий),
+- пакетной валидации наборов из манифеста.
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
 from pathlib import Path
-import pandera as pa
-from pandera import Column, Check
 from datetime import datetime
-import yaml, glob, os
-from typing import Dict, Any
+from typing import Dict, Any, List
+
+import yaml
+import glob
+import os
+import typer
+from typer.main import get_command
+import numpy as np
+import pandas as pd
+import pathlib
+import json
+import pandera as pa
+from pandera import Column, Check # noqa: F401 (оставлено для обратной совместимости)
 from concurrent.futures import ThreadPoolExecutor
 
 app = typer.Typer()
 
-''' функция для вычисления квантилей численных признаков '''
-def _quant_bounds(x: pd.Series, qlow=0.01, qhigh=0.99, pad=0.1): 
-    lo, hi = x.quantile(qlow), x.quantile(qhigh) # lo - нижняя граница, hi - верхняя
-    span = hi - lo if np.isfinite(hi - lo) else 0  # span - ширина ядра распределения
-    return float(lo - pad*span), float(hi + pad*span) # возвращает расширенные границы: ниже lo и выше hi на 10% ширины диапазона. Это «мягкие» рамки, чтобы не заваливать валидацию редкими, но нормальными значениями.
 
-@app.command()
-def profile(input: str, name: str = None, out_dir: str = "validations"):
-    """Собирает профиль (suite) по датасету.
+def _quant_bounds(x: pd.Series, qlow=0.01, qhigh=0.99, pad=0.1) -> tuple[float, float]:
+    """Вычисляет «мягкие» числовые границы по квантилям с запасом.
+
+    Берёт квантили ``qlow`` и ``qhigh`` (по умолчанию 1% и 99%), вычисляет
+    ширину ядра распределения (``hi - lo``) и расширяет границы на ``pad``
+    долей этой ширины в обе стороны. Такая эвристика помогает не заваливать
+    валидацию редкими, но допустимыми значениями.
 
     Args:
-        input (str): Путь к файлу датасета (``.csv`` или ``.parquet``).
-        name (str, optional): Логическое имя датасета.  
-            Влияет на имя файла suite. Если не задано — используется ``stem`` от ``input``.
-        out_dir (str, optional): Корневая папка для сохранения результатов валидации. 
-            По умолчанию ``"validations"``.
+        x: Числовая серия.
+        qlow: Нижний квантиль в диапазоне ``[0, 1]``.
+        qhigh: Верхний квантиль в диапазоне ``[0, 1]`` (должен быть > ``qlow``).
+        pad: Доля расширения диапазона относительно ``(qhigh - qlow)``.
 
     Returns:
-        None
+        Пара ``(low, high)`` расширенных границ как ``float``.
+
+    Examples:
+        >>> import pandas as pd
+        >>> s = pd.Series([0, 1, 2, 3, 100])
+        >>> _quant_bounds(s, 0.01, 0.99, 0.1) # doctest: +SKIP
+        (low, high)
     """
-    # читаем данные
+    lo, hi = x.quantile(qlow), x.quantile(qhigh)
+    span = hi - lo if np.isfinite(hi - lo) else 0
+    return float(lo - pad*span), float(hi + pad*span)
+
+    
+@app.command()
+def profile(input: str, name: str = None, out_dir: str = "validations") -> None:
+    """Строит профиль (suite) по датасету и сохраняет в JSON.
+
+    Для каждого столбца сохраняются: тип данных, доля пропусков, для числовых —
+    «мягкие» границы, для малочисленных категориальных — перечень категорий.
+
+    Args:
+        input: Путь к файлу датасета (``.csv`` или ``.parquet``).
+        name: Логическое имя датасета. Если не задано — используется ``stem`` от ``input``.
+        out_dir: Корневая папка для сохранения результатов (``validations``).
+
+    Raises:
+        OSError: При ошибке чтения/записи файлов.
+
+    Example:
+        Запуск из терминала::
+    
+            python -m olist_churn_prediction.validator_cli profile \
+            --input data/processed/customers.parquet \
+            --name customers
+    """
     if input.endswith(".parquet"):
         df = pd.read_parquet(input)
     else:
         df = pd.read_csv(input)
 
-    # строим suite
     suite = {"columns": {}, "row_count": len(df)}
     for c in df.columns:
         s = df[c]
@@ -52,7 +100,6 @@ def profile(input: str, name: str = None, out_dir: str = "validations"):
             info["categories"] = [str(v) for v in s.dropna().unique().tolist()]
         suite["columns"][c] = info
 
-    # куда писать
     suites_dir = Path(out_dir) / "suites"
     suites_dir.mkdir(parents=True, exist_ok=True)
 
@@ -62,9 +109,37 @@ def profile(input: str, name: str = None, out_dir: str = "validations"):
 
     typer.echo(f"✅ Профиль сохранён: {out_path}")
 
+    
 @app.command()
-def validate(input: str, suite_path: str, report_dir: str = "validations/reports",
-             null_delta_pp: float = 5.0, new_cat_ratio: float = 0.02):
+def validate(
+    input: str,
+    suite_path: str,
+    report_dir: str = "validations/reports",
+    null_delta_pp: float = 5.0,
+    new_cat_ratio: float = 0.02,
+) -> None:
+    """Проверяет датасет на расхождения со *suite* и сохраняет отчёт.
+    
+    Проверяются структура (пропавшие/лишние колонки), рост доли пропусков,
+    выходы за «мягкие» числовые границы и появление новых категорий.
+    
+    Args:
+        input: Путь к проверяемому датасету (``.csv``/``.parquet``).
+        suite_path: Путь к JSON-профилю (*suite*).
+        report_dir: Директория для отчётов проверки.
+        null_delta_pp: Допустимый рост доли пропусков в п.п. относительно базовой.
+        new_cat_ratio: Допустимая доля строк с новыми категориями.
+    
+    Raises:
+        typer.Exit: С кодом 1, если найдены ошибки валидации.
+    
+    Example:
+        Запуск из терминала::
+    
+            python -m olist_churn_prediction.validator_cli validate \
+            --input data/processed/customers.parquet \
+            --suite-path validations/suites/customers.json
+    """
     df = pd.read_parquet(input) if input.endswith(".parquet") else pd.read_csv(input)
     suite = json.loads(pathlib.Path(suite_path).read_text())
     errors = []
@@ -87,9 +162,6 @@ def validate(input: str, suite_path: str, report_dir: str = "validations/reports
         base_null = spec.get("null_rate", 0)*100
         if cur_null - base_null > null_delta_pp:
             errors.append(f"{c}: доля NaN {cur_null:.1f}% > baseline {base_null:.1f}% + {null_delta_pp}п.п.")
-
-        # dtype (мягко): пытаемся привести к числу/дате по observed типу
-        # …
 
         # numeric bounds
         if "num_bounds" in spec and pd.api.types.is_numeric_dtype(s):
@@ -124,6 +196,22 @@ def validate(input: str, suite_path: str, report_dir: str = "validations/reports
 
 
 def _load_df(ds: dict) -> pd.DataFrame:
+    """Загружает DataFrame из описания датасета в манифесте.
+
+    Приоритет отдаётся пути ``cast.output`` (если он существует); в противном
+    случае используется исходный путь ``path``. Поддерживаются ``.csv`` и
+    ``.parquet``.
+    
+    Args:
+        ds: Секция датасета из YAML-манифеста.
+    
+    Returns:
+        Загруженный ``pd.DataFrame``.
+    
+    Raises:
+        FileNotFoundError: Если указанный файл не существует.
+        ValueError: Если расширение файла не поддерживается.
+    """
     # 1) если есть cast.output — читаем его
     out = (ds.get("cast") or {}).get("output")
     if out and Path(out).exists():
@@ -134,7 +222,19 @@ def _load_df(ds: dict) -> pd.DataFrame:
 
 
 @app.command()
-def profile_all(manifest: str = "validations/validation_manifest.yaml"):
+def profile_all(manifest: str = "validations/validation_manifest.yaml") -> None:
+    """Строит *suite* для всех датасетов по YAML-манифесту.
+
+    Для каждого датасета загружает данные (с учётом сэмплирования), вызывает
+    :func:`profile` и сохраняет профиль в ``validations/suites``.
+
+    Args:
+        manifest: Путь к YAML-манифесту валидаций.
+
+    Raises:
+        OSError: При ошибках чтения/записи.
+        KeyError: Если в манифесте отсутствуют обязательные поля.
+    """
     cfg = yaml.safe_load(open(manifest))
     for ds in cfg["datasets"]:
         df = _load_df(ds)
@@ -145,51 +245,61 @@ def profile_all(manifest: str = "validations/validation_manifest.yaml"):
         name = ds["name"]
         profile(input=ds.get("input", name), name=name)  # можно вынести ядро в функцию
 
-# --- helpers: core validator for one DataFrame based on a saved suite ---
-def _validate_df_core(df, suite_path, ds=None, defaults=None):
-    """Проверяет DataFrame по сохранённому профилю (suite) и порогам.
 
-    Проверяются структура (missing/extra columns), доля пропусков,
-    границы для числовых/датовых колонок и новизна категорий.
-
+def _validate_df_core(
+    df: pd.DataFrame,
+    suite_path: str | os.PathLike[str],
+    ds: dict | None = None,
+    defaults: dict | None = None,
+) -> list[str]:
+    """Проверяет ``DataFrame`` по сохранённому *suite* и порогам.
+    
+    Проверяются структура (``missing``/``extra`` columns), рост доли пропусков,
+    выход за числовые/датовые границы и новизна категорий, с учётом глобальных
+    и пер-колоночных порогов.
+    
     Args:
         df: Датафрейм для проверки.
-        suite_path: Путь к JSON-профилю (suite) с базовыми метаданными.
-        ds: Переопределения порогов на уровне датасета (например, `thresholds`, `columns`, `strict_structure`).
-        defaults: Глобальные значения по умолчанию для валидации.
+        suite_path: Путь к JSON-профилю (*suite*).
+        ds: Переопределения порогов и структуры на уровне датасета.
+            Пример структуры::
+            
+                {
+                  "thresholds": {...},
+                  "columns": {...},
+                  "strict_structure": true
+                }
 
+        defaults: Глобальные значения по умолчанию (обычно из ``manifest.defaults.validate``).
+    
     Returns:
-        Список строк с найденными ошибками (пустой список — валидация пройдена).
-
+        Список строк с найденными ошибками. Пустой список означает, что проверка
+        пройдена.
+    
     Raises:
-        Exception: При ошибках чтения suite или внутренних преобразованиях.
+        Exception: При ошибках чтения *suite* или конвертации типов дат/времени.
     """
     defaults = defaults or {}
-    # Базовые пороги
     thresholds = {
         "null_delta_pp": defaults.get("null_delta_pp", 5.0),
         "new_cat_ratio": defaults.get("new_cat_ratio", 0.02),
         "oob_ratio":     defaults.get("oob_ratio", 0.01),  # доля значений вне границ
     }
-    # Оверрайды на уровень датасета
     if ds and isinstance(ds, dict):
         th_ds = ds.get("thresholds", {})
         for k in thresholds:
             thresholds[k] = th_ds.get(k, thresholds[k])
 
-    # Строгость структуры
     strict_structure = defaults.get("strict_structure", True)
     if ds and "strict_structure" in ds:
         strict_structure = ds["strict_structure"]
 
-    # Пер-колоночные оверрайды (необяз.)
     col_overrides = (ds or {}).get("columns", {})
 
-    # Загружаем suite
     suite = json.loads(pathlib.Path(suite_path).read_text())
     errors = []
 
-    # --- 1) структура ---
+    # 1) структура
     expected_cols = set(suite["columns"].keys())
     got_cols = set(df.columns)
     missing = expected_cols - got_cols
@@ -199,7 +309,7 @@ def _validate_df_core(df, suite_path, ds=None, defaults=None):
     if strict_structure and extra:
         errors.append(f"extra columns: {sorted(extra)}")
 
-    # --- 2) проверки по колонкам ---
+    # 2) проверки по колонкам
     for c, spec in suite["columns"].items():
         if c not in df.columns:
             continue
@@ -254,32 +364,48 @@ def _validate_df_core(df, suite_path, ds=None, defaults=None):
     return errors
 
 
-# --- command: validate-all (без внешних зависимостей на _validate_df_core) ---
 @app.command()
-def validate_all(manifest: str = "validations/validation_manifest.yaml"):
+def validate_all(manifest: str = "validations/validation_manifest.yaml") -> None:
+    """Пакетно валидирует все датасеты, описанные в YAML-манифесте.
+
+    Для каждого набора выбирает источник данных, ищет путь к *suite*, применяет
+    :func:`_validate_df_core` с учётом глобальных и пер-датасетных порогов и
+    печатает результат. Если были ошибки — завершает процесс с кодом 1.
+
+    Args:
+        manifest: Путь к YAML-манифесту валидаций.
+
+    Raises:
+        typer.Exit: Если для любого датасета найдены ошибки валидации.
+
+    Example:
+        Запуск из терминала::
+
+            python -m olist_churn_prediction.validator_cli validate-all \
+                --manifest validations/validation_manifest.yaml
+    """
     cfg = yaml.safe_load(Path(manifest).read_text())
     defaults_validate = (cfg.get("defaults") or {}).get("validate", {})
     errors_total: list[str] = []
 
     for ds in cfg["datasets"]:
-        # выключенные наборы пропускаем
         if ds.get("enabled") is False or ds.get("validate") is False:
             continue
 
         name = ds["name"]
 
-        # 1) загрузка данных (предпочтение cast.output)
+        # 1) загрузка данных
         try:
-            df = _load_df(ds)  # уже реализовано выше
+            df = _load_df(ds)
         except Exception as e:
             msg = f"load error {e}"
             typer.echo(f"❌ {name}: {msg}")
             errors_total.append(f"{name}: {msg}")
             continue
 
-        # 2) где лежит suite
+        # 2) путь к suite
         vcfg = ds.get("validate") or {}
-        suite_path = vcfg.get("suite") or ds.get("suite")  # бэкомпат
+        suite_path = vcfg.get("suite") or ds.get("suite")
         if not suite_path:
             msg = "suite not specified (expected validate.suite)"
             typer.echo(f"❌ {name}: {msg}")
@@ -291,7 +417,7 @@ def validate_all(manifest: str = "validations/validation_manifest.yaml"):
             errors_total.append(f"{name}: {msg}")
             continue
 
-        # 3) собираем контекст для ядра (что можно переопределять на уровне датасета)
+        # 3) контекст порогов
         ds_ctx = {
             "thresholds": vcfg.get("thresholds", {}),
             "columns": vcfg.get("columns", {}),

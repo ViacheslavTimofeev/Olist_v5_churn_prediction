@@ -1,3 +1,21 @@
+"""Функции для построения целевой переменной (таргета) оттока.
+
+Докстринги оформлены в стиле Google (подходит для Sphinx napoleon).
+
+Основная функция:
+
+- :func:`create_churn_label` — создаёт бинарный таргет ``churned`` на основе
+  временных меток последнего заказа клиента.
+
+Пример использования::
+
+    import pandas as pd
+    from olist_churn_prediction.targets import create_churn_label
+
+    df = pd.read_parquet("data/raw/orders.parquet")
+    df_labeled = create_churn_label(df, horizon_days=120)
+"""
+
 import pandas as pd
 
 def create_churn_label(
@@ -11,9 +29,41 @@ def create_churn_label(
     keep_statuses: tuple[str, ...] | None = ("delivered",),
     force: bool = False,
 ) -> pd.DataFrame:
-    """
-    Возвращает копию df с колонкой target_col (0/1).
-    Идемпотентна: если target уже есть и force=False — не пересчитывает.
+    """Создаёт бинарную метку оттока (churn) для клиентов.
+
+    Логика: клиент считается ``churned=1``, если с момента его последнего
+    заказа прошло больше ``horizon_days`` относительно контрольной даты.
+    
+    Args:
+        df: Входной датафрейм заказов.
+        customer_col: Имя колонки с идентификатором клиента.
+        purchase_ts_col: Имя колонки с датой/временем покупки.
+        target_col: Имя создаваемой колонки таргета (по умолчанию ``"churned"``).
+        horizon_days: Порог давности (в днях), после которого клиент считается ушедшим.
+        reference_date: Контрольная дата:
+            * ``"max"`` (по умолчанию) → максимум по ``purchase_ts_col``.
+            * строка в ISO-формате (``YYYY-MM-DD``).
+            * ``pd.Timestamp``.
+            * ``None`` → тоже берётся максимум.
+        filter_status_col: Имя колонки со статусом заказа для фильтрации.
+        keep_statuses: Допустимые статусы заказов (например, только ``("delivered",)``).
+        force: Если ``False`` и таргет уже существует — ничего не делать.
+    
+    Returns:
+        DataFrame с новой бинарной колонкой ``target_col``.
+    
+    Raises:
+        ValueError: Если отсутствует колонка ``customer_col`` или ``purchase_ts_col``.
+    
+    Examples:
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({
+        ... "customer_id": [1, 1, 2],
+        ... "order_purchase_timestamp": ["2020-01-01", "2020-02-01", "2020-01-15"],
+        ... "order_status": ["delivered", "delivered", "delivered"]
+        ... })
+        >>> create_churn_label(df, horizon_days=30)["churned"].tolist() # doctest: +SKIP
+        [1, 1, 1]
     """
 
     if target_col in df.columns and not force:

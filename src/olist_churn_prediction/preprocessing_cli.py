@@ -1,10 +1,31 @@
-"""preprocessing_cli — манифест-driven предобработка.
+"""Манифест‑driven предобработка данных для проекта Olist Churn.
 
-Содержит загрузчик/сохранялку датасетов и функцию `_apply_steps()`,
-которую используют CLI-команды `apply` и `run`.
+Модуль содержит CLI-команды (Typer) и ядро предобработки, которое
+применяет последовательность шагов к входному ``DataFrame``.
+
+Основные элементы:
+
+- :func:`_load_df` — загрузка датасета из файла (glob) или SQL.
+- :func:`_save_df` — сохранение датасета в ``.parquet``/``.csv``.
+- :func:`_apply_steps` — поочерёдное применение шагов из манифеста.
+- CLI-команды: :func:`apply`, :func:`run`, :func:`make_label`.
+
+Пример запуска (из консоли)::
+
+    # единичный датасет без манифеста
+    python -m olist_churn_prediction.preprocessing_cli apply data/raw/orders.parquet data/interim/orders_clean.parquet --steps-json '[{"op":"lowercase_categoricals"}]'
+
+    # пакетный режим с манифестом
+    python -m olist_churn_prediction.preprocessing_cli run --manifest preprocessings/preprocessing_manifest.yaml
 """
+
 from __future__ import annotations
-import json, glob, os, yaml, typer
+
+import json
+import glob
+import os
+import yaml
+import typer
 from typer.main import get_command
 from pathlib import Path
 from typing import Dict, Any, Union, List, Callable
@@ -12,30 +33,31 @@ import pandas as pd
 from olist_churn_prediction.targets import create_churn_label
 from olist_churn_prediction import feature_processing as fp  # lowercase_categoricals, disambiguate_city_state, group_by_features
 
-app = typer.Typer(help="Preprocessing pipeline CLI (manifest-driven)")
+app = typer.Typer()
 
-''' Загрузка/сохранение — по мотивам validator_cli.py '''
+
 def _load_df(entry: Dict[str, Any]) -> pd.DataFrame:
-    """Загружает DataFrame по описанию источника (совместимо с ``validator_cli.py``).
-
-    Поддерживаемые режимы:
-        - ``"file"``: читает последний по времени файл по glob-маске из ``entry["input"]``.
-        - ``"sql"``: выполняет SQL-запрос ``entry["query"]`` с использованием строки подключения
-          из переменной окружения ``entry["conn_env"]``.
-
+    """Загружает ``DataFrame`` по описанию источника.
+    
+    Поддерживаются два режима:
+    - ``"file"`` — читает **последний** (по времени модификации) файл по
+    glob-маске из ``entry["input"]``; формат определяется по расширению.
+    - ``"sql"`` — выполняет SQL-запрос ``entry["query"]`` с использованием
+    строки подключения из переменной окружения ``entry["conn_env"]``.
+    
     Args:
-        entry (Dict[str, Any]): Описание источника данных. Ключи:
-            - ``reader`` (str, optional): ``"file"`` или ``"sql"``. По умолчанию ``"file"``.
-            - для ``"file"``: ``input`` (str) — glob-маска пути к файлам.
-            - для ``"sql"``: ``query`` (str) и ``conn_env`` (str) — имя переменной окружения
-              со строкой подключения.
-
+        entry: Описание источника данных. Ключи (в зависимости от режима):
+            * ``reader``: ``"file"`` | ``"sql"`` (по умолчанию ``"file"``).
+            * для ``file``: ``input`` — glob-маска пути к файлам.
+            * для ``sql``: ``query`` (SQL-строка), ``conn_env`` (имя env-переменной
+            со строкой подключения), опционально ``params``.
+    
     Returns:
-        pd.DataFrame: Загруженные данные.
-
+        Загруженный датафрейм.
+    
     Raises:
         KeyError: Если отсутствуют обязательные ключи для выбранного режима.
-        FileNotFoundError: Если по glob-маске не найдено ни одного файла.
+        FileNotFoundError: Если по glob-маске не найден ни один файл.
         ValueError: Если указан неподдерживаемый ``reader``.
     """
     reader = entry.get("reader", "file")
@@ -48,7 +70,19 @@ def _load_df(entry: Dict[str, Any]) -> pd.DataFrame:
         path = sorted(glob.glob(entry["input"]))[-1]
         return pd.read_parquet(path) if path.endswith(".parquet") else pd.read_csv(path)
 
-def _save_df(df: pd.DataFrame, output: str):
+
+def _save_df(df: pd.DataFrame, output: str) -> None:
+    """Сохраняет ``DataFrame`` на диск в ``.parquet`` или ``.csv``.
+
+    Папки создаются автоматически.
+    
+    Args:
+        df: Датафрейм для сохранения.
+        output: Путь к файлу результата (окончание ``.parquet`` или ``.csv``).
+    
+    Returns:
+        None
+    """
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.suffix == ".parquet":
@@ -57,28 +91,31 @@ def _save_df(df: pd.DataFrame, output: str):
         df.to_csv(out, index=False)
     typer.echo(f"💾 Saved: {out}")
 
-''' Ядро применения шагов '''
+    
 def _apply_steps(
     df: pd.DataFrame,
     steps: List[Dict[str, Any]],
     defaults: Dict[str, Any] | None = None,
 ) -> pd.DataFrame:
-    """Применяет последовательность шагов предобработки к DataFrame.
-
-    Поддерживаемые шаги: `lowercase_categoricals`, `disambiguate_city_state`,
-    `group_by_features`, `groupby_aggregate`, `dropna_rows`, `dropna_columns`,
-    `drop_duplicates`, `rename_columns`, `drop_columns`, `select_columns`, `join`.
-
+    """Применяет последовательность шагов предобработки к ``DataFrame``.
+    
+    Поддерживаемые операции (``op``):
+    ``lowercase_categoricals``, ``disambiguate_city_state``,
+    ``group_by_features``, ``groupby_aggregate``, ``dropna_rows``,
+    ``dropna_columns``, ``drop_duplicates``, ``rename_columns``,
+    ``drop_columns``, ``select_columns``, ``join``.
+    
     Args:
         df: Исходный датафрейм.
-        steps: Список операций (каждый элемент — dict с ключом `op` и параметрами).
-        defaults: Глобальные значения по умолчанию для манифеста.
-
+        steps: Последовательность шагов, где каждый элемент — словарь
+            с ключом ``op`` и параметрами операции.
+        defaults: Глобальные значения по умолчанию из манифеста (необязательны).
+    
     Returns:
-        Обновлённый DataFrame после применения всех шагов.
-
+        Обновлённый датафрейм после всех применённых операций.
+    
     Raises:
-        ValueError: Если шаг не содержит ключ `op` или указан неизвестный `op`.
+        ValueError: Если шаг не содержит ключ ``op`` или указан неизвестный ``op``.
     """
     defaults = defaults or {}
     X = df
@@ -91,7 +128,7 @@ def _apply_steps(
         if op == "lowercase_categoricals":
             cat_cols = step.get("cat_cols")
             if cat_cols is None:
-                # если не передали, используем все object/category (без автоопределения в модуле)
+                # если не передали, используем все object/string/category
                 cat_cols = [c for c in X.columns if str(X[c].dtype) in ("object", "string") or pd.api.types.is_categorical_dtype(X[c])]
             X = fp.lowercase_categoricals(X, cat_cols=cat_cols, inplace=False)
 
@@ -142,7 +179,7 @@ def _apply_steps(
                         agg_dict[c] = "first"
 
             # 3) сам groupby
-            # dropna=False чтобы не терять группы с NaN-ключом (на твой вкус можно True).
+            # dropna=False чтобы не терять группы с NaN-ключом.
             X = (
                 X.groupby(by, dropna=False)
                  .agg(agg_dict)
@@ -295,7 +332,6 @@ def _apply_steps(
 
     return X
 
-# ======== Команды CLI ========
 
 @app.command()
 def apply(
@@ -303,18 +339,19 @@ def apply(
     output: str = typer.Argument(..., help="Куда сохранить результат"),
     steps_json: str = typer.Option(None, help="JSON со списком шагов"),
     sample: float = typer.Option(None, help="Доля сэмпла для отладки, напр. 0.1"),
-):
-    """Применить шаги предобработки к одному датасету (без манифеста).
+) -> None:
+    """Применяет шаги предобработки к одному датасету (без манифеста).
 
-    Example:
-        >>> preproc apply data/raw.csv data/interim/cli_related/clean.parquet \
-        ...   --steps-json '[{"op":"lowercase_categoricals", "cat_cols":["customer_city"]}]'
+    Пример:
 
+    preproc apply data/raw.csv data/interim/clean.parquet \
+      --steps-json '[{"op":"lowercase_categoricals", "cat_cols":["customer_city"]}]'
+    
     Args:
-        input (str): Входной файл (.csv или .parquet).
-        output (str): Куда сохранить результат.
-        steps_json (str | None): JSON со списком шагов предобработки.
-        sample (float | None): Доля сэмпла для отладки, например ``0.1``.
+        input: Входной файл (``.csv`` или ``.parquet``).
+        output: Куда сохранить результат.
+        steps_json: JSON-строка со списком шагов предобработки.
+        sample: Доля сэмпла для отладки (например, ``0.1``).
     
     Returns:
         None
@@ -326,11 +363,31 @@ def apply(
     df_out = _apply_steps(df, steps)
     _save_df(df_out, output)
 
+
 @app.command()
-def run(manifest: str = typer.Option("preprocessings/preprocessing_manifest.yaml", "--manifest", "-m", help="Путь к YAML-манифесту предобработки")):
-    """
-    Запустить предобработку для набора датасетов по манифесту YAML.
-    Структура манифеста совместима по духу с validator_cli: defaults + datasets[].
+def run(manifest: str = typer.Option(
+    "preprocessings/preprocessing_manifest.yaml",
+    "--manifest", "-m",
+    help="Путь к YAML-манифесту предобработки"
+    )
+) -> None:
+    """Выполняет пакетную предобработку согласно YAML-манифесту.
+
+    Читает секции ``defaults`` и ``datasets``. Для каждого датасета:
+      1) загружает источник (:func:`_load_df`),
+      2) при необходимости сэмплирует,
+      3) применяет :func:`_apply_steps`,
+      4) сохраняет результат.
+    
+    Args:
+        manifest: Путь к YAML-манифесту предобработки.
+    
+    Raises:
+        typer.Exit: Если хотя бы для одного датасета произошла ошибка загрузки,
+            обработки или сохранения.
+    
+    Returns:
+        None
     """
     cfg = yaml.safe_load(Path(manifest).read_text())
     defaults = cfg.get("defaults", {})
@@ -382,7 +439,8 @@ def run(manifest: str = typer.Option("preprocessings/preprocessing_manifest.yaml
         raise typer.Exit(code=1)
 
     typer.echo("✅ Все датасеты успешно предобработаны")
-    
+
+
 @app.command("label")
 def make_label(
     input_path: Path = typer.Option(..., help="Путь к мастер-датасету после join-ов"),
@@ -395,7 +453,26 @@ def make_label(
     filter_status_col: str = "order_status",
     keep_statuses: str = "delivered",  # через запятую для нескольких
     force: bool = False,
-):
+) -> None:
+    """Создаёт столбец таргета оттока и сохраняет расширенный датасет.
+    
+    Оборачивает :func:`olist_churn_prediction.targets.create_churn_label`.
+    
+    Args:
+        input_path: Путь к мастер-датасету (``.csv``/``.parquet``) после join-ов.
+        output_path: Куда сохранить результат с таргетом.
+        customer_col: Имя столбца с идентификатором клиента.
+        purchase_ts_col: Имя столбца с датой/временем покупки.
+        target_col: Имя создаваемого столбца-таргета.
+        horizon_days: Горизонт давности для определения оттока (в днях).
+        reference_date: Контрольная дата (``"max"`` или строка вида ``YYYY-MM-DD``).
+        filter_status_col: Имя столбца статуса заказа для фильтрации.
+        keep_statuses: Список статусов (через запятую), которые оставить.
+        force: Пересоздавать таргет даже при наличии столбца ``target_col``.
+    
+    Returns:
+        None
+    """
     df = pd.read_parquet(input_path) if input_path.suffix==".parquet" else pd.read_csv(input_path)
     ks = tuple(s.strip() for s in keep_statuses.split(",")) if keep_statuses else None
 
