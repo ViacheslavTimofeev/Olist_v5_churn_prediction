@@ -1,16 +1,16 @@
 # Olist Churn Prediction
 
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](#) [![Docs](https://img.shields.io/badge/docs-Sphinx-informational.svg)](#) [![MLflow](https://img.shields.io/badge/tracking-MLflow-lightgrey.svg)](#)
+[![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](#) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](#) [![Docs](https://img.shields.io/badge/docs-Sphinx-informational.svg)](#) [![MLflow](https://img.shields.io/badge/tracking-MLflow-lightgrey.svg)](#)
 
-Предсказание **оттока клиентов** для бразильского e‑commerce Olist. Репозиторий оформлен по шаблону Cookiecutter Data Science и расширен CLI‑скриптами (Typer), конфигами YAML, валидацией данных и трекингом экспериментов через MLflow.
+Предсказание **оттока клиентов** для бразильского e‑commerce Olist. Репозиторий оформлен по шаблону Cookiecutter Data Science и расширен CLI‑скриптами (Typer), конфигами YAML, валидацией данных и трекингом экспериментов через MLflow. Добавлены Jupyter-ноутбуки со всеми этапами проекта.
 
 ---
 
 ## 🔑 Ключевые возможности
-- **Валидация входящих данных** через YAML‑манифест (без pydantic), отчёт об отклонениях.
+- **Валидация входящих данных** через YAML‑манифест, отчёт об отклонениях.
 - **Предобработка и фичеинжиниринг**: объединения таблиц, выбор столбцов, обработка пропусков, нормализация категориальных признаков.
-- **Создание таргета `churned`** по окну неактивности (например, >120 дней).
-- **Бейзлайн‑модели** (scikit‑learn Pipelines, ColumnTransformer).
+- **Создание таргета `churned`** по окну неактивности (размер окна по выбору, default >120 дней).
+- **Baseline‑модели** (scikit‑learn Pipelines, ColumnTransformer).
 - **Кросс‑валидация и логирование метрик** (F1, Recall, ROC‑AUC и др.) в **MLflow**.
 - **Документация Sphinx** с автогенерацией API‑разделов.
 
@@ -18,35 +18,69 @@
 
 ## 🗂️ Структура проекта
 ```
+.
+├── .env
+├── .gitignore
 ├── LICENSE
 ├── Makefile
 ├── README.md
-├── data/
-│   ├── raw/            # исходные таблицы Olist
-│   ├── interim/        # промежуточные таблицы после join/clean
-│   └── processed/      # готовые к моделированию датасеты
-├── docs/               # Sphinx-проект (источники RST)
-├── models/             # сериализованные модели/предсказания (опционально)
-├── notebooks/          # исследования и EDA
-├── reports/
-│   └── figures/        # графики и иллюстрации
+├── artifacts           # артефакты логирования
+│   └── baseline
+├── configs             # YAML-конфиги
+│   └── baseline.yaml
+├── data
+│   ├── interim         # промежуточные таблицы после join/clean
+│   ├── processed       # готовые к моделированию датасеты
+│   └── raw             # исходные таблицы Olist
+├── docs                # Sphinx-проект (источники RST)
+│   ├── Makefile
+│   ├── _build          # сборка документации через make
+│   ├── api
+│   ├── commands.rst    # описание CLI-команд
+│   ├── conf.py
+│   ├── getting-started.rst
+│   ├── index.rst
+│   └── make.bat
+├── features
+├── notebooks            # исследования и EDA
+│   ├── .gitkeep
+│   ├── EDA
+│   ├── feature engineering
+│   └── preprocessing
+├── preprocessings       
+│   └── preprocessing_manifest.yaml   # манифест для предобработки
+├── pyproject.toml
+├── references
+│   └── .gitkeep
+├── reports             
+│   ├── .gitkeep
+│   └── figures          # графики и иллюстрации
 ├── requirements.txt
-├── setup.py            # pip install -e .
-├── configs/
-│   ├── preprocessing.yaml
-│   └── baseline.yaml
-├── validations/
-│   ├── manifest.yaml
-│   └── suites/         # правила/профили для отдельных датасетов
-├── mlruns/             # артефакты MLflow (локально)
-└── src/
-    └── olist_churn_prediction/
-        ├── __init__.py
-        ├── feature_processing.py
-        ├── targets.py
-        ├── validator_cli.py         # Typer CLI: валидация по manifest.yaml
-        ├── preprocessing_cli.py     # Typer CLI: join/select/drop/clean
-        └── baseline_cli.py          # Typer CLI: CV/train/predict по YAML
+├── setup.py
+├── src                  # модули
+│   ├── olist_churn_prediction    # библиотека
+│   └── olist_churn_prediction.egg-info
+├── src.egg-info
+│   ├── PKG-INFO
+│   ├── SOURCES.txt
+│   ├── dependency_links.txt
+│   └── top_level.txt
+├── tests
+│   ├── __init__.py
+│   └── test_environment.py
+├── tox.ini
+├── typed_schemas         # схемы для приведения к типам
+│   ├── payments_types.yaml
+│   ├── product_measures_types.yaml
+│   ├── public_customers_types.yaml
+│   ├── public_data_types.yaml
+│   ├── sellers_types.yaml
+│   └── translation_types.yaml
+└── validations
+    ├── reports
+    ├── suites
+    └── validation_manifest.yaml   # манифест для валидации
+
 ```
 
 > Папки `mlruns/` и большие бинарные артефакты рекомендуется добавить в `.gitignore`.
@@ -58,7 +92,7 @@
 ### 1) Установка окружения
 ```bash
 # conda (рекомендуется)
-conda create -n olist-ml python=3.10 -y
+conda create -n olist-ml python=3.13 -y
 conda activate olist-ml
 
 # зависимости
@@ -79,9 +113,9 @@ defaults:
   new_cat_ratio: 0.02    # доля новых категорий
 
 datasets:
-  - name: customers
-    path: data/raw/olist_customers_dataset.csv
-    suite: validations/suites/customers.yaml
+  - name: customers                            # имя
+    path: data/raw/olist_customers_dataset.csv # путь
+    suite: validations/suites/customers.yaml   # правила, по которым валидируется
   - name: orders
     path: data/raw/olist_orders_dataset.csv
     suite: validations/suites/orders.yaml
