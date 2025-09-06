@@ -1,6 +1,12 @@
-"""Сборка baseline-пайплайна и утилиты для обучения/оценки.
+"""Baseline-пайплайн: сборка, кросс-валидация, обучение и предсказания.
 
-Содержит билдеры препроцессинга и моделей, а также команды Typer (dry_run, cv, fit, predict).
+Модуль предоставляет как **ядро** (построение препроцессинга и модели),
+так и **CLI-команды** на Typer:
+
+- :func:`dry_run` — быстрый просмотр конфигурации, типов фич и схемы CV.
+- :func:`cv` — кросс-валидация с сохранением метрик.
+- :func:`fit` — обучение на train/holdout c логированием артефактов.
+- :func:`predict` — инференс по сохранённому пайплайну.
 """
 from __future__ import annotations
 
@@ -39,11 +45,20 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
-# ------------------------------
-# Utils
-# ------------------------------
 
 def _read_df(path: str | Path) -> pd.DataFrame:
+    """Читает датасет из ``.csv`` или ``.parquet``.
+
+    Args:
+        path: Путь к файлу.
+    
+    Returns:
+        Загруженный ``pd.DataFrame``.
+    
+    Raises:
+        FileNotFoundError: Если файл отсутствует.
+        ValueError: Для неподдерживаемого расширения файла.
+    """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Input not found: {path}")
@@ -56,13 +71,24 @@ def _read_df(path: str | Path) -> pd.DataFrame:
 
 
 def _infer_feature_types(df: pd.DataFrame, target: str, id_cols: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
+    """Авто-детекция числовых и категориальных признаков.
+
+    Исключает целевую и идентификаторные колонки и возвращает списки
+    числовых и категориальных фич на основе ``dtypes``.
+    
+    Args:
+        df: Датафрейм с признаками и целевой переменной.
+        target: Имя столбца-таргета.
+        id_cols: Список колонок-идентификаторов, которые нужно исключить.
+    
+    Returns:
+        Кортеж ``(numeric_features, categorical_features)``.
+    """
     id_cols = id_cols or []
     drop = set([target, *id_cols])
-    # Категориальные: object, string, category, boolean
     cat_mask = df.drop(columns=list(drop), errors="ignore").select_dtypes(
         include=["object", "string", "category", "bool"]
     ).columns.tolist()
-    # Числовые: number (int/float)
     num_mask = df.drop(columns=list(drop), errors="ignore").select_dtypes(
         include=["number"]
     ).columns.tolist()
@@ -70,6 +96,14 @@ def _infer_feature_types(df: pd.DataFrame, target: str, id_cols: Optional[List[s
 
 
 def _choose_scoring(y: pd.Series) -> List[str]:
+    """Подбирает список метрик для ``cross_validate`` исходя из числа классов.
+
+    Args:
+        y: Целевая переменная (серия) для определения числа классов.
+    
+    Returns:
+        Список имён метрик Sklearn, совместимых с ``cross_validate``.
+    """
     classes = y.dropna().unique()
     if len(classes) <= 2:
         return [
@@ -89,6 +123,22 @@ def _choose_scoring(y: pd.Series) -> List[str]:
 
 
 def _build_model(name: str, params: dict):
+    """Создаёт модель по имени и параметрам.
+
+    Поддержка:
+      - ``"logreg"`` → :class:`sklearn.linear_model.LogisticRegression`
+      - ``"rf"`` → :class:`sklearn.ensemble.RandomForestClassifier`
+    
+    Args:
+        name: Имя модели (``"logreg"`` или ``"rf"``).
+        params: Параметры модели, переопределяющие значения по умолчанию.
+    
+    Returns:
+        Экземпляр модели Sklearn.
+    
+    Raises:
+        ValueError: Для неизвестного имени модели.
+    """
     name = name.lower()
     if name == "logreg":
         default = dict(max_iter=1000, n_jobs=None, solver="lbfgs")
@@ -104,13 +154,27 @@ def _build_model(name: str, params: dict):
 
 
 def _build_preprocessor(numeric_features: List[str], categorical_features: List[str], *, sparse_ohe: bool = True) -> ColumnTransformer:
+    """Строит ``ColumnTransformer`` для числовых и категориальных фич.
+
+    Числовой конвейер: ``SimpleImputer(median)`` → ``StandardScaler``.
+    Категориальный: ``SimpleImputer(most_frequent)`` → ``OneHotEncoder``.
+    
+    Args:
+        numeric_features: Список числовых колонок.
+        categorical_features: Список категориальных колонок.
+        sparse_ohe: Использовать ли разрежённый вывод у OHE (для деревьев
+            часто лучше ``False``).
+    
+    Returns:
+        Настроенный :class:`sklearn.compose.ColumnTransformer`.
+    """
     num_pipe = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")), # заполнение ппропусков для num features
+        ("imputer", SimpleImputer(strategy="median")),
         ("scaler", StandardScaler()),
     ])
     cat_pipe = Pipeline([
-        ("imputer", SimpleImputer(strategy="most_frequent")), # заполнение пропусков для cat features
-        # ВАЖНО: в новых версиях sklearn используем sparse_output
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        # в новых версиях sklearn используем sparse_output
         ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=sparse_ohe, dtype=np.float32)),
     ])
     pre = ColumnTransformer(
@@ -119,19 +183,38 @@ def _build_preprocessor(numeric_features: List[str], categorical_features: List[
             ("cat", cat_pipe, categorical_features),
         ],
         remainder="drop",
-        sparse_threshold=0.3,  # не обязан, но часто полезно
+        sparse_threshold=0.3,  # не обязательно, но часто полезно
     )
     return pre
 
 
 def _ensure_output_dir(path: str | Path) -> Path:
+    """Создаёт директорию, если её нет, и возвращает путь как ``Path``.
+
+    Args:
+        path: Путь к директории.
+    
+    Returns:
+        Объект ``Path`` на созданную (или существующую) директорию.
+    """
     p = Path(path)
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
 def _flatten_params(d: dict, prefix: str = "", sep: str = ".") -> dict:
-    """Плоские ключи для логирования в MLflow."""
+    """Плоское представление вложенного словаря параметров.
+
+    Полезно для логирования параметров модели в MLflow.
+    
+    Args:
+        d: Исходный словарь (возможно, вложенный).
+        prefix: Префикс для ключей при разворачивании.
+        sep: Разделитель между уровнями ключей.
+    
+    Returns:
+        Новый словарь без вложенных структур.
+    """
     out = {}
     for k, v in (d or {}).items():
         key = f"{prefix}{sep}{k}" if prefix else str(k)
@@ -143,10 +226,26 @@ def _flatten_params(d: dict, prefix: str = "", sep: str = ".") -> dict:
 
 
 def _mlflow_enabled(cfg: dict) -> bool:
+    """Проверяет, включён ли MLflow и доступен ли пакет.
+
+    Args:
+        cfg: YAML-конфиг в виде словаря.
+    
+    Returns:
+        ``True``, если ``cfg['mlflow']['enabled']`` истинно и пакет MLflow импортирован.
+    """
     return bool(cfg.get("mlflow", {}).get("enabled", False) and (mlflow is not None))
 
 
 def _mlflow_init(cfg: dict):
+    """Инициализирует MLflow (эксперимент, tracking URI).
+
+    Args:
+        cfg: Конфиг, содержащий секцию ``mlflow``.
+    
+    Returns:
+        ``True``, если инициализация выполнена и логирование разрешено, иначе ``False``.
+    """
     if not _mlflow_enabled(cfg):
         return False
     mlf = cfg["mlflow"]
@@ -159,7 +258,13 @@ def _mlflow_init(cfg: dict):
 
 
 def _mlflow_log_config_and_features(cfg: dict, num_cols: list[str], cat_cols: list[str]):
-    # логируем конфиг YAML как текст
+    """Логирует в MLflow YAML-конфиг и списки признаков как артефакты.
+
+    Args:
+        cfg: Исходный конфиг.
+        num_cols: Итоговый список числовых признаков.
+        cat_cols: Итоговый список категориальных признаков.
+    """
     try:
         mlflow.log_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False), "config.yaml")
     except Exception:
@@ -181,16 +286,20 @@ def _mlflow_log_config_and_features(cfg: dict, num_cols: list[str], cat_cols: li
 
 def build_pipeline(config: dict, df: Optional[pd.DataFrame] = None) -> Tuple[Pipeline, List[str], List[str]]:
     """Собирает sklearn-пайплайн из YAML-конфига.
-
+    
+    Если списки признаков в конфиге не заданы, при наличии ``df`` будет выполнен
+    авто-инференс типов колонок.
+    
     Args:
-        config: Конфиг с ключами `target`, `id_cols`, `model`, `numeric_features`, `categorical_features`, `cv`, `random_state`, `output_dir`.
-        df: Необязательный сэмпл данных для авто-инференса типов колонок, если списки фич в конфиге не заданы.
-
+        config: Конфиг с ключами `target`, `id_cols`, `model`, `numeric_features`,
+            `categorical_features`, `cv`, `random_state`, `output_dir`.
+        df: Сэмпл данных для авто-инференса типов колонок (необязательно).
+    
     Returns:
-        Tuple[pipeline, numeric_features, categorical_features].
-
+        Кортеж ``(pipeline, numeric_features, categorical_features)``.
+    
     Raises:
-        ValueError: Если указана неизвестная модель в `config["model"]["name"]`.
+        ValueError: Для неизвестной модели в ``config['model']['name']``.
     """
     target = config["target"]
     id_cols = config.get("id_cols", [])
@@ -227,7 +336,14 @@ def build_pipeline(config: dict, df: Optional[pd.DataFrame] = None) -> Tuple[Pip
 
 @app.command()
 def dry_run(config: str = typer.Option(..., help="Путь к YAML-конфигу")):
-    """Показать, как будет собран пайплайн: списки колонок, модель, метрики."""
+    """Быстрый прогон без обучения: показать конфиг, списки фич и метрики CV.
+
+    Args:
+        config: Путь к YAML-файлу конфигурации.
+    
+    Returns:
+        None
+    """
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
     df = _read_df(cfg["data_path"])[:200]  # небольшой фрагмент для инференса типов
     pipe, num_cols, cat_cols = build_pipeline(cfg, df)
@@ -246,7 +362,17 @@ def dry_run(config: str = typer.Option(..., help="Путь к YAML-конфиг�
 
 @app.command()
 def cv(config: str = typer.Option(..., help="Путь к YAML-конфигу")):
-    """Кросс-валидация на всём датасете. Сохраняет metrics.json и (при включённом MLflow) логирует результаты."""
+    """Запускает кросс-валидацию и сохраняет средние метрики.
+
+    Читает датасет, собирает пайплайн, выполняет Stratified K-Fold CV и
+    сохраняет метрики в ``metrics_cv.json``.
+    
+    Args:
+        config: Путь к YAML-файлу конфигурации.
+    
+    Returns:
+        None
+    """
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
     df = _read_df(cfg["data_path"])  
 
@@ -304,7 +430,18 @@ def fit(
     config: str = typer.Option(..., help="Путь к YAML-конфигу"),
     save_pipeline: bool = typer.Option(True, help="Сохранять pipeline.joblib"),
 ):
-    """Holdout train/test: обучает, оценивает, сохраняет pipeline и метрики. При включённом MLflow всё логируется."""
+    """Обучает модель и сохраняет артефакты (метрики, предсказания, пайплайн).
+
+    Делит данные на train/test (holdout), обучает пайплайн, считает метрики,
+    сохраняет результаты в ``output_dir`` и, при необходимости, логирует их в MLflow.
+    
+    Args:
+        config: Путь к YAML-конфигу.
+        save_pipeline: Сохранять ли файл ``pipeline.joblib`` на диск.
+    
+    Returns:
+        None
+    """
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
     df = _read_df(cfg["data_path"])  
 
@@ -436,7 +573,21 @@ def predict(
     id_cols: Optional[str] = typer.Option(None, help="Через запятую: колонки-идентификаторы для вывода"),
     out_path: Optional[str] = typer.Option(None, help="Куда сохранить предсказания .csv"),
 ):
-    """Применить сохранённый pipeline к новым данным."""
+    """Делает предсказания по сохранённому пайплайну.
+
+    Загружает ``pipeline.joblib``, читает данные, вычисляет предсказания и,
+    при наличии, вероятности классов. Результат сохраняется в CSV.
+    
+    Args:
+        pipeline_path: Путь к сохранённому пайплайну ``.joblib``.
+        data_path: Путь к данным без таргета (``.csv`` или ``.parquet``).
+        id_cols: Список колонок-идентификаторов (строка с запятыми).
+        out_path: Явный путь для файла предсказаний. Если не указан, имя
+            формируется рядом с ``pipeline_path``.
+    
+    Returns:
+        None
+    """
     pipe: Pipeline = joblib.load(pipeline_path)
     df = _read_df(data_path)
 

@@ -6,25 +6,25 @@ Baseline
 
 .. click:: olist_churn_prediction.baseline_cli:cli
    :prog: baseline
-   :show-nested:
+   :nested: full
 
 Preprocessing
 -------------
 
 .. click:: olist_churn_prediction.preprocessing_cli:cli
    :prog: preproc
-   :show-nested:
+   :nested: full
 
 Types (cast)
 ------------
 
 .. click:: olist_churn_prediction.types_cli:cli
    :prog: types
-   :show-nested:
+   :nested: full
 
 Validation
 ----------
 
 .. click:: olist_churn_prediction.validator_cli:cli
    :prog: validate
-   :show-nested:
+   :nested: full

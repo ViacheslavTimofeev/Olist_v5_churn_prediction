@@ -40,8 +40,8 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",           # Google/NumPy docstring
     "sphinx_autodoc_typehints",      # типы в сигнатурах
-    # "myst_parser",                 # ← включи, если хочешь .md
-    "sphinx_click",                  # ← включи, если документируешь CLI на Click/Typer
+    # "myst_parser",                 # .md-поддержка
+    "sphinx_click",                  # документация CLI на Click/Typer
 ]
 
 autosummary_generate = True
@@ -54,9 +54,9 @@ napoleon_use_rtype = True
 autodoc_default_options = {
     "members": True,              # показывать публичные
     "undoc-members": False,
-    "private-members": False,     # НЕ тащим _вспомогательные по умолчанию
+    "private-members": True,     # не тащим _вспомогательные по умолчанию
     "show-inheritance": False,
-    "exclude-members": "app,main",  # <— прячем Typer-приложение и точку входа
+    "exclude-members": "app,main",  # прячем Typer-приложение и точку входа
 }
 
 # Add any paths that contain templates here, relative to this directory.

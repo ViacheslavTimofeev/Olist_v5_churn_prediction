@@ -1,3 +1,15 @@
+"""Каст типов данных по YAML‑схеме и пакетный режим по манифесту.
+
+Модуль предоставляет CLI-команды на Typer для приведения типов столбцов
+в таблицах проекта Olist Churn.
+
+Основные команды:
+- :func:`cast` — привести типы одного датасета по YAML‑схеме.
+- :func:`cast_all` — пакетно привести типы для всех датасетов из манифеста.
+
+Внутренние функции с префиксом ``_`` считаются служебными, но задокументированы
+для удобства разработки и IDE.
+"""
 import sys
 from pathlib import Path
 from typing import Dict, Any
@@ -11,6 +23,18 @@ app = typer.Typer(add_completion=False)
 
 
 def _ensure_columns(df: pd.DataFrame, schema_cols: set, keep_unknown: bool):
+    """Проверяет соответствие колонок датафрейма схеме.
+    
+    Args:
+        df: Входной датафрейм.
+        schema_cols: Множество ожидаемых колонок согласно YAML‑схеме.
+        keep_unknown: Если ``False``, наличие незадекларированных колонок
+            считается ошибкой.
+    
+    Raises:
+        ValueError: Если отсутствуют обязательные колонки или обнаружены
+            неизвестные (при ``keep_unknown=False``).
+    """
     missing = schema_cols - set(df.columns)
     unknown = set(df.columns) - schema_cols
     if missing:
@@ -19,17 +43,50 @@ def _ensure_columns(df: pd.DataFrame, schema_cols: set, keep_unknown: bool):
         raise ValueError(f"Unknown columns present (set keep_unknown_columns=true to allow): {sorted(unknown)}")
 
 def _cast_string(s: pd.Series) -> pd.Series:
+    """Приводит серию к типу ``string`` (pandas nullable string)."""
     return s.astype("string")
 
 def _cast_int(s: pd.Series, mode: str, nullable: bool=True) -> pd.Series:
+    """Приводит серию к целочисленному типу.
+
+    Args:
+        s: Исходная серия.
+        mode: Режим ошибок: ``"strict"`` (некорректные значения → исключение)
+            или ``"coerce"`` (некорректные → ``NaN``).
+        nullable: Если ``True``, используется тип ``Int64`` (nullable), иначе
+            ``int64``.
+    
+    Returns:
+        Конвертированная серия указанного целочисленного типа.
+    """
     ser = pd.to_numeric(s, errors=("raise" if mode=="strict" else "coerce"))
     return ser.astype("Int64" if nullable else "int64")
 
 def _cast_float(s: pd.Series, mode: str) -> pd.Series:
+    """Приводит серию к ``float64`` с учётом режима ошибок.
+
+    Args:
+        s: Исходная серия.
+        mode: ``"strict"`` или ``"coerce"`` для управления обработкой ошибок.
+    """
     return pd.to_numeric(s, errors=("raise" if mode=="strict" else "coerce")).astype("float64")
 
 def _cast_bool(s: pd.Series, mode: str) -> pd.Series:
-    # Универсальный маппинг; при желании вынести в YAML
+    """Приводит серию к булевому типу (nullable) по универсальному маппингу.
+    
+    Поддерживаются значения: ``true/false``, ``1/0``, ``yes/no`` (без регистра).
+    
+    Args:
+        s: Исходная серия.
+        mode: ``"strict"`` — при нераспознанных значениях будет исключение;
+            ``"coerce"`` — нераспознанные значения станут ``NaN``.
+    
+    Returns:
+        Серия типа ``boolean``.
+    
+    Raises:
+        ValueError: В строгом режиме при наличии нераспознанных значений.
+    """
     mapping = {"true": True, "false": False, "1": True, "0": False, "yes": True, "no": False}
     x = s.astype("string").str.strip().str.lower().map(mapping)
     if mode == "strict" and x.isna().any():
@@ -38,6 +95,17 @@ def _cast_bool(s: pd.Series, mode: str) -> pd.Series:
     return x.astype("boolean")  # nullable boolean
 
 def _cast_datetime(s: pd.Series, mode: str, fmt: str|None, drop_tz: bool=False) -> pd.Series:
+    """Приводит серию к типу дат/времени с опцией удаления таймзоны.
+
+    Args:
+        s: Исходная серия.
+        mode: ``"strict"`` (ошибки → исключение) или ``"coerce"`` (ошибки → ``NaT``).
+        fmt: Явный формат времени для ``pd.to_datetime`` (необязательно).
+        drop_tz: Если ``True``, локализует в UTC и убирает таймзону (делает naive).
+    
+    Returns:
+        Серия типа ``datetime64[ns]`` (naive) или tz-aware, если ``drop_tz=False``.
+    """
     # Если drop_tz=True, читаем с utc=True и затем убираем TZ.
     errors = "raise" if mode == "strict" else "coerce"
     if drop_tz:
@@ -49,6 +117,16 @@ def _cast_datetime(s: pd.Series, mode: str, fmt: str|None, drop_tz: bool=False) 
     return dt
 
 def _cast_category(s: pd.Series, cats: list[str]|None, ordered: bool=False) -> pd.Series:
+    """Приводит серию к категориальному типу с фиксированным списком значений.
+
+    Args:
+        s: Исходная серия.
+        cats: Список допустимых категорий; если не задан, используется auto.
+        ordered: Упорядоченные ли категории.
+    
+    Returns:
+        Серия категориального типа.
+    """
     if cats:
         cat = pd.Categorical(s.astype("string"), categories=cats, ordered=ordered)
         return pd.Series(cat)
@@ -57,17 +135,18 @@ def _cast_category(s: pd.Series, cats: list[str]|None, ordered: bool=False) -> p
 def _cast_col(df: pd.DataFrame, col: str, spec: Dict[str, Any], mode: str) -> pd.Series:
     """Приводит одну колонку к типу по спецификации схемы.
 
-    Поддерживаемые типы: string, int, float, bool, datetime, category.
-
+    Поддерживаемые типы: ``string``, ``int``, ``float``, ``bool``, ``datetime``, ``category``.
+    
     Args:
         df: Датафрейм с исходными данными.
         col: Имя колонки.
-        spec: Спецификация для колонки (ключ `type`, опции: `nullable`, `format`, `drop_tz`, `categories`, `ordered`).
-        mode: Режим ошибок: "strict" (ошибки — исключения) или "coerce" (некорректные значения -> NaN/NaT).
-
+        spec: Спецификация для колонки (ключ ``type``, опции: ``nullable``,
+            ``format``, ``drop_tz``, ``categories``, ``ordered``).
+        mode: Режим ошибок: ``"strict"`` (исключения) или ``"coerce"`` (→ ``NaN/NaT``).
+    
     Returns:
         Преобразованная серия.
-
+    
     Raises:
         ValueError: Если указан неподдерживаемый тип или приведение в strict-режиме невозможно.
     """
@@ -93,7 +172,26 @@ def cast(
     output_path: Path = typer.Option(..., "--output", "-o", help="Путь для сохранения"),
     dry_run: bool = typer.Option(False, help="Не сохранять, только отчёт"),
     csv_sep: str = typer.Option(",", help="Разделитель для CSV, если нужно"),
-):
+) -> None:
+    """Приводит типы столбцов одного датасета по YAML‑схеме.
+
+    Читает входной файл без жёстких dtypes, проверяет состав колонок
+    согласно схеме, последовательно приводит каждую колонку к заданному
+    типу (с учётом режима ошибок), формирует краткий отчёт о новых пропусках
+    и, при необходимости, сохраняет результат.
+    
+    Args:
+        input_path: Путь к исходному файлу (``.csv`` или ``.parquet``).
+        schema_path: Путь к YAML‑файлу со схемой типов.
+        output_path: Куда сохранить результат. Если не указан — ``*.typed.parquet``
+            рядом с источником.
+        dry_run: Если ``True``, ничего не сохранять — только вывести отчёт.
+        csv_sep: Разделитель для CSV при чтении.
+    
+    Raises:
+        ValueError: Если структурная проверка провалена или приведение типов
+            не удалось в строгом режиме.
+    """
     cfg = yaml.safe_load(open(schema_path, "r", encoding="utf-8"))
     spec = cfg["schema"]
     mode = cfg.get("options", {}).get("mode", "strict")
@@ -140,8 +238,22 @@ def cast(
 
 
 @app.command()
-def cast_all(manifest: Path = typer.Argument("validations/validation_manifest.yaml"),
-             fail_fast: bool = typer.Option(True, help="Остановиться при первой ошибке")):
+def cast_all(
+    manifest: Path = typer.Argument("validations/validation_manifest.yaml"),
+    fail_fast: bool = typer.Option(True, help="Остановиться при первой ошибке"),
+) -> None:
+    """Пакетно приводит типы для всех датасетов из YAML‑манифеста.
+
+    Для каждого датасета склеивает настройки из ``defaults.cast`` и секции
+    датасета, вызывает :func:`cast` (одиночный режим) и печатает результат.
+    
+    Args:
+        manifest: Путь к YAML‑манифесту с секциями ``defaults`` и ``datasets``.
+        fail_fast: Если ``True``, останавливается при первой ошибке.
+    
+    Raises:
+        SystemExit: Если были ошибки и ``fail_fast=False`` (возврат код 1).
+    """
     cfg = yaml.safe_load(open(manifest, "r", encoding="utf-8"))
     dfl_cast = (cfg.get("defaults") or {}).get("cast", {})
     errors = []
@@ -160,7 +272,7 @@ def cast_all(manifest: Path = typer.Argument("validations/validation_manifest.ya
             output = out_dir / f"{name}.typed.parquet"
 
         try:
-            # ВАЖНО: прокинь сюда override'ы, если в твоём cast() они поддерживаются
+            # ВАЖНО: прокинуть сюда override'ы, если в cast() они поддерживаются
             cast(
                 input_path=src,
                 schema_path=schema_path,

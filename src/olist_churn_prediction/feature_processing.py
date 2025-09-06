@@ -1,3 +1,18 @@
+"""Функции предобработки признаков для проекта Olist Churn.
+
+Модуль содержит небольшие утилиты и операции подготовки данных.
+
+Основные операции:
+- :func:`lowercase_categoricals` — нормализация строковых/категориальных значений
+(нижний регистр, пробелы → ``_``).
+- :func:`disambiguate_city_state` — устранение неоднозначности городов путём
+добавления суффикса штата/региона.
+- :func:`group_by_features` — построчные агрегации по наборам колонок.
+- Утилиты: :func:`rename_columns`, :func:`drop_columns`.
+
+Приватные помощники (:func:`_to_list`, :func:`_infer_categoricals`) остаются
+внутренними, но задокументированы для удобства сопровождения и IDE.
+"""
 from __future__ import annotations
 
 from typing import Dict, List, Iterable, Callable
@@ -8,6 +23,22 @@ from pandas.api.types import is_categorical_dtype, is_string_dtype
 # ===================== Вспомогательные =====================
 
 def _to_list(x) -> List[str]:
+    """Приводит значение к списку строк.
+
+    Args:
+        x: Значение. Может быть ``None``, строкой, списком или кортежем.
+
+    Returns:
+        Список строк. Для ``None`` возвращает пустой список.
+    
+    Examples:
+        >>> _to_list("a")
+        ['a']
+        >>> _to_list(["a", "b"]) # уже список
+        ['a', 'b']
+        >>> _to_list(None)
+        []
+    """
     if x is None:
         return []
     if isinstance(x, (list, tuple)):
@@ -16,7 +47,17 @@ def _to_list(x) -> List[str]:
 
 
 def _infer_categoricals(df: pd.DataFrame) -> List[str]:
-    """Определяем строковые/категориальные столбцы."""
+    """Определяет вероятные категориальные колонки в датафрейме.
+
+    Колонка считается категориальной, если её dtype — ``category``,
+    pandas ``StringDtype`` или обычный ``object`` (строки).
+    
+    Args:
+        df: Исходный датафрейм.
+    
+    Returns:
+        Список имён колонок с категориальным/строковым типом.
+    """
     cols: List[str] = []
     for c in df.columns:
         s = df[c]
@@ -33,15 +74,25 @@ def lowercase_categoricals(
     inplace: bool = False
 ) -> pd.DataFrame:
     """Приводит строковые/категориальные колонки к нижнему регистру и заменяет пробелы на ``_``.
-
+    
+    Для колонок типа ``category`` преобразуются **сами категории**, чтобы
+    сохранить dtype. Для строковых колонок (``object``/``StringDtype``)
+    значения нормализуются через векторные string-операции.
+    
     Args:
-        df (pd.DataFrame): Входной датафрейм.
-        cat_cols (Iterable[str] | None): Явный список колонок.  
-            Если ``None`` — берём все строковые/категориальные столбцы автоматически.
-        inplace (bool): Если ``True`` — модифицируем исходный ``df``, иначе возвращаем копию.
-
+        df: Входной датафрейм.
+        cat_cols: Явный список колонок. Если ``None`` — берутся все строковые/
+            категориальные столбцы автоматически.
+        inplace: Если ``True`` — модифицировать исходный ``df``, иначе вернуть копию.
+    
     Returns:
-        pd.DataFrame: Датафрейм с обновлёнными значениями категориальных колонок.
+        Датафрейм с обновлёнными значениями категориальных колонок.
+
+    Examples:
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({"city": ["New York", "Sao Paulo"], "x": [1, 2]})
+        >>> lowercase_categoricals(df)["city"].tolist()
+        ['new_york', 'sao_paulo']
     """
     target = df if inplace else df.copy()
     cat_cols = list(cat_cols) if cat_cols is not None else _infer_categoricals(target)
@@ -82,20 +133,24 @@ def disambiguate_city_state(
 ) -> pd.DataFrame:
     """Разрешает неоднозначность городов, добавляя к одноимённым городам суффикс штата/региона.
 
-    Например:
-        - ``paris`` из разных штатов → ``paris_sp``, ``paris_rj``.
-
-    Требует, чтобы ``city_col`` и ``state_col`` уже были приведены к нижнему регистру
-    (можно вызвать перед этим ``lowercase_categoricals``).
-
+    Требует, чтобы ``city_col`` и ``state_col`` уже были приведены к нижнему
+    регистру (можно вызвать перед этим :func:`lowercase_categoricals`).
+    
     Args:
-        df (pd.DataFrame): Входной датафрейм.
-        city_col (str): Имя колонки с городами.
-        state_col (str): Имя колонки с регионами/штатами.
-        suffix_sep (str): Разделитель между названием города и регионом (по умолчанию ``"_"``).
-
+        df: Входной датафрейм.
+        city_col: Имя колонки с городами.
+        state_col: Имя колонки с регионами/штатами.
+        suffix_sep: Разделитель между названием города и регионом (по умолчанию ``"_"``).
+        inplace: Если ``True``, модифицировать исходный датафрейм.
+    
     Returns:
-        pd.DataFrame: Датафрейм с обновлённой колонкой ``city_col``.
+        Датафрейм с обновлённой колонкой ``city_col``.
+    
+    Examples:
+        >>> import pandas as pd
+        >>> df = pd.DataFrame({"city": ["paris", "paris"], "state": ["sp", "rj"]})
+        >>> disambiguate_city_state(df, "city", "state")["city"].tolist()
+        ['paris_sp', 'paris_rj']
     """
     target = df if inplace else df.copy()
 
@@ -132,23 +187,31 @@ def group_by_features(
     keep_original: bool = False,
     prefix: str | None = None,
 ) -> pd.DataFrame:
-    """Построчные агрегации признаков (по колонкам), с гибкими функциями.
-
+    """Вычисляет новые признаки построчной агрегацией над группами колонок.
+    
     Args:
-        df (pd.DataFrame): Входной датафрейм.
-        group_mapping (dict):  
-            - ``{"new_feature": ["col1", "col2", ...], ...}``  
-            - или ``{"new_feature": "col"}``.
-        agg_funcs (str | callable | list | dict, optional):  
-            - строка: одна agg-функция для всех групп (``"sum"``, ``"mean"``, ``"max"`` и др.),  
-            - callable: одна функция для всех групп,  
-            - список: список функций по порядку для каждой группы,  
-            - dict: ``{"new_feature": "sum" | callable, ...}``.
-        keep_original (bool): Если ``True`` — оставить исходные колонки.
-        prefix (str | None): Префикс для новых колонок.
-
+        df: Входной датафрейм.
+        group_mapping: Сопоставление "новый_признак" → список/колонка. Примеры::
+        
+            {"amount_total": ["price", "freight_value"]}
+            {"items_total": "order_items"}
+    
+        agg_funcs: Правило агрегации. Допускаются формы:
+            - строка (``"sum"``, ``"mean"``, ``"max"`` и др.) — одна функция для всех групп;
+            - callable — одна функция для всех групп;
+            - список функций той же длины, что и ``group_mapping``;
+            - словарь ``{"новый_признак": функция|строка}``.
+        keep_original: Если ``True``, оставить исходные колонки и добавить новые; если ``False``,
+            удалить использованные столбцы и оставить только базовые + новые.
+        prefix: Дополнительный префикс для имён новых колонок.
+    
     Returns:
-        pd.DataFrame: Датафрейм с добавленными агрегированными признаками.
+        Датафрейм с добавленными агрегированными признаками.
+    
+    Raises:
+        ValueError: Если длина ``agg_funcs`` не совпадает с ``group_mapping`` или
+            отсутствуют функции для некоторых групп.
+        TypeError: Если ``agg_funcs`` неподдерживаемого типа.
     """
     df_out = df.copy()
 
@@ -191,18 +254,29 @@ def group_by_features(
 # ===================== Утилитарные шаги (по желанию) =====================
 
 def rename_columns(df: pd.DataFrame, mapping: Dict[str, str], inplace: bool = False) -> pd.DataFrame:
-    """Переименование колонок."""
+    """Переименовывает колонки согласно отображению имён.
+
+    Args:
+        df: Исходный датафрейм.
+        mapping: Словарь ``{"старое": "новое"}``.
+        inplace: Если ``True``, модифицировать исходный датафрейм.
+    
+    Returns:
+        Датафрейм с обновлёнными именами колонок.
+    """
     target = df if inplace else df.copy()
     return target.rename(columns=mapping)
 
 def drop_columns(df: pd.DataFrame, cols: Iterable[str], inplace: bool = False) -> pd.DataFrame:
-    """Удаление колонок (ignore missing)."""
+    """Удаляет указанные колонки из датафрейма.
+
+    Args:
+        df: Исходный датафрейм.
+        cols: Iterable имён колонок для удаления.
+        inplace: Если ``True``, модифицировать исходный датафрейм.
+    
+    Returns:
+        Датафрейм без выбранных колонок (или исходный, если колонки отсутствуют).
+    """
     target = df if inplace else df.copy()
     return target.drop(columns=list(cols), errors="ignore")
-
-
-# ---------------------- Планы на будущее ----------------------
-# 1. Конфигурация через YAML/JSON.
-# 2. Поддержка категориальных агрегаций (mode, first, any).
-# 3. Версия на polars/dask для больших данных.
-# 4. Добавить integration tests в /tests.
