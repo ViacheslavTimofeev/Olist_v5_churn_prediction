@@ -91,14 +91,18 @@
 
 ### 1) Установка окружения
 ```bash
-# conda (рекомендуется)
-conda create -n olist-ml python=3.13 -y
-conda activate olist-ml
+# из корня репозитория
+conda env create -f environment.yml
+conda activate olist-ml        # или имя из поля `name:` в вашем environment.yml
 
-# зависимости
-pip install -r requirements.txt
+# привязать окружение к Jupyter
+python -m ipykernel install --user --name olist-ml --display-name "olist-ml"
+
 # локальная установка пакета
 pip install -e .
+
+# проверка
+python -c "import olist_churn_prediction as p; print('OK:', p.__name__)"
 ```
 
 ### 2) Данные
