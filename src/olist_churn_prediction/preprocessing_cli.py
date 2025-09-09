@@ -366,7 +366,7 @@ def apply(
 
 @app.command()
 def run(manifest: str = typer.Option(
-    "preprocessings/preprocessing_manifest.yaml",
+    "configs/preprocessing_manifest.yaml",
     "--manifest", "-m",
     help="Путь к YAML-манифесту предобработки"
     )

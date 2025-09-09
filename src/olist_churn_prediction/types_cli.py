@@ -239,7 +239,7 @@ def cast(
 
 @app.command()
 def cast_all(
-    manifest: Path = typer.Argument("validations/validation_manifest.yaml"),
+    manifest: Path = typer.Argument("configs/validation_manifest.yaml"),
     fail_fast: bool = typer.Option(True, help="Остановиться при первой ошибке"),
 ) -> None:
     """Пакетно приводит типы для всех датасетов из YAML‑манифеста.

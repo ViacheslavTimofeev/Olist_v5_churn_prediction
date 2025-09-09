@@ -222,7 +222,7 @@ def _load_df(ds: dict) -> pd.DataFrame:
 
 
 @app.command()
-def profile_all(manifest: str = "validations/validation_manifest.yaml") -> None:
+def profile_all(manifest: str = "configs/validation_manifest.yaml") -> None:
     """Строит *suite* для всех датасетов по YAML-манифесту.
 
     Для каждого датасета загружает данные (с учётом сэмплирования), вызывает
@@ -365,7 +365,7 @@ def _validate_df_core(
 
 
 @app.command()
-def validate_all(manifest: str = "validations/validation_manifest.yaml") -> None:
+def validate_all(manifest: str = "configs/validation_manifest.yaml") -> None:
     """Пакетно валидирует все датасеты, описанные в YAML-манифесте.
 
     Для каждого набора выбирает источник данных, ищет путь к *suite*, применяет
@@ -382,7 +382,7 @@ def validate_all(manifest: str = "validations/validation_manifest.yaml") -> None
         Запуск из терминала::
 
             python -m olist_churn_prediction.validator_cli validate-all \
-                --manifest validations/validation_manifest.yaml
+                --manifest configs/validation_manifest.yaml
     """
     cfg = yaml.safe_load(Path(manifest).read_text())
     defaults_validate = (cfg.get("defaults") or {}).get("validate", {})

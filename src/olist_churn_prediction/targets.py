@@ -94,4 +94,5 @@ def create_churn_label(
     last_orders[target_col] = (last_orders["_days_since_last"] > horizon_days).astype("int8")
 
     out = df.merge(last_orders[[customer_col, target_col]], on=customer_col, how="left", validate="m:1")
+    
     return out
