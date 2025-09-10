@@ -11,7 +11,7 @@ Getting Started
 ----------
 - Python 3.13+ (рекомендуется conda)
 - Git
-- (Опционально) Graphviz, Make (для сборки документации)
+- (Опционально) Make (для сборки документации)
 
 Установка
 ---------
@@ -25,8 +25,8 @@ Getting Started
    conda create -n olist-ml python=3.13 -y
    conda activate olist-ml
 
-   # 3) Установка пакета в editable-режиме (+dev инструменты, если есть extras)
-   pip install -e ".[dev]"
+   # 3) Установка пакета в editable-режиме
+   pip install -e .
 
 .. note::
    Если не используете conda — создайте venv стандартными средствами Python.
@@ -57,7 +57,7 @@ Getting Started
 
 .. code-block:: bash
 
-   python -m olist_churn_prediction.validator_cli validate-all --manifest validations/manifest.yaml
+   python -m olist_churn_prediction.validator_cli validate-all --manifest configs/validation_manifest.yaml
 
 2) Предобработка (join/фичепроцессинг по YAML):
 

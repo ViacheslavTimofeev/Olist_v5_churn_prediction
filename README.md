@@ -25,7 +25,9 @@
 ├── artifacts           # артефакты логирования
 │   └── baseline
 ├── configs             # YAML-конфиги
-│   └── baseline.yaml
+│   ├── baseline.yaml
+│   ├── preprocessing_manifest.yaml   # манифест для предобработки
+│   └── validation_manifest.yaml   # манифест для валидации
 ├── data
 │   ├── interim         # промежуточные таблицы после join/clean
 │   ├── processed       # готовые к моделированию датасеты
@@ -44,8 +46,6 @@
 │   ├── EDA
 │   ├── feature engineering
 │   └── preprocessing
-├── preprocessings       
-│   └── preprocessing_manifest.yaml   # манифест для предобработки
 ├── pyproject.toml
 ├── references
 ├── reports
@@ -62,9 +62,7 @@
 │   └── translation_types.yaml
 └── validations
     ├── reports
-    ├── suites                     # "скелеты" правила валидации
-    └── validation_manifest.yaml   # манифест для валидации
-
+    └── suites                     # "скелеты" правила валидации
 ```
 
 > Папки `mlruns/` и большие бинарные артефакты рекомендуется добавить в `.gitignore`.
@@ -99,7 +97,7 @@ python -c "import olist_churn_prediction as p; print('OK:', p.__name__)"
 Манифест описывает, какие таблицы проверять и какие пороги использовать.
 ```yaml
 # часть validation_manifest.yaml
-defaults:  # настройки по умолчанию
+defaults:
   cast:
     mode: strict  # проверка состава колонок, идёт против схемы типов (поведение описывается в typed_schemas/*.yaml)
     keep_unknown_columns: false # при false будет ошибка при наличии незадекларированных колонок (поведение описывается в typed_schemas/*.yaml)
@@ -110,7 +108,7 @@ defaults:  # настройки по умолчанию
     new_cat_ratio: 0.02  # доля строк с новыми категориями, при превышении — ошибка
     oob_ratio: 0.01  # доля значений вне числовых/датовых границ (из suite), при превышении — ошибка
     strict_structure: true  # если true, наличие лишних колонок относительно suite — ошибка (отсутствующие колонки — всегда ошибка)
-    dayfirst: false  # 
+    dayfirst: false  # в разработке
     sample: null  # доля от общего для выборки, null - взять весь датасет
 
 datasets:  # имена датасетов для валидации, отсутствие датасета в списке пропустит для него этап валидации
@@ -138,12 +136,12 @@ python -m olist_churn_prediction.validator_cli validate-all \
 ```bash
 # для одного
 python -m olist_churn_prediction.validator_cli validate \
-       data/processed/customers.parquet \
-       validations/suites/customers.json
+       data/raw/olist_public_dataset_v2.csv \
+       validations/suites/public_data.json
 
 # для всех сразу
 python -m olist_churn_prediction.validator_cli validate-all \
-       configs/manifest.yaml
+       configs/validation_manifest.yaml
 ```
 ### 4) Приведение к типам
 На основании индивидуальных манифестов для каждого датасета происходит приведение к описанным в них типам данных. Манифесты создаются вручную в папке typed_schemas.
@@ -179,24 +177,25 @@ python src/olist_churn_prediction/types_cli.py cast \
        --output <относительный путь для сохранения>
 
 # для всех сразу
-python src/olist_churn_prediction/types_cli.py cast_all \
+python src/olist_churn_prediction/types_cli.py cast-all \
        <относительный путь к манифесту валидации>
 ```
 Пример:
 ```bash
 # для одного
 python src/olist_churn_prediction/types_cli.py cast \
-       data/raw/payments.csv \
-       --schema typed_schemas/payments.yaml \
+       data/raw/payments_olist_public_dataset.csv \
+       --schema typed_schemas/payments_types.yaml \
        --output data/interim/cli_related/typed/payments_typed.parquet
 
 # для всех сразу
-python src/olist_churn_prediction/types_cli.py cast_all \
+python src/olist_churn_prediction/types_cli.py cast-all \
        configs/validation_manifest.yaml
 ```
 
 ### 5) Предобработка и фичи
-Пример конфига для выбора, очистки и объединений:
+Пример конфига для выбора, очистки и объединений.
+
 Чистка и выбор:
 ```yaml
 # часть preprocessing_manifest.yaml
@@ -237,24 +236,12 @@ datasets:
 ```
 Структура команд для запуска:
 ```bash
-# для одного
-python -m olist_churn_prediction.preprocessing_cli apply \
-       data/<имя raw датасета>.csv \
-       data/interim/<имя clean датасета>.parquet \
-       --steps-json '[{"op":"<имя шага>", "cat_cols":["<название колонки>"]}]'
-
 # для всех сразу
 python -m olist_churn_prediction.preprocessing_cli run \
        --manifest <относительный путь к манифесту препроцессинга>
 ```
 Запуск:
 ```bash
-# для одного
-python -m olist_churn_prediction.preprocessing_cli apply \
-       data/raw.csv \
-       data/interim/clean.parquet \
-       --steps-json '[{"op":"lowercase_categoricals", "cat_cols":["customer_city"]}]'  # список доступных шагов описан в документации к preprocessing_cli.py
-
 # для всех сразу
 python -m olist_churn_prediction.preprocessing_cli run \
        --manifest configs/preprocessing_manifest.yaml
@@ -291,9 +278,27 @@ datasets:
     output: data/processed/cli_related/master_clean.parquet  # объединенный чистый датасет
 ```
 ### 6) Создание целевой переменной `churned`
-Если генерация таргета делается на этапе предобработки — используйте соответствующий шаг в `preprocessing_cli`.
+
+Вариант 1 (default, на основе манифеста, детерминировано):
+```yaml
+- name: master_clean_churned
+    input: data/processed/cli_related/master_clean.parquet
+
+    steps:
+      - op: make_label
+        customer_col: customer_id
+        purchase_ts_col: order_purchase_timestamp
+        target_col: churned
+        horizon_days: 120
+        reference_date: max             # или конкретная дата
+        filter_status_col: order_status
+        keep_statuses: [delivered]      # можно строкой "delivered, shipped"
+
+    output: data/processed/cli_related/master_clean_churned.parquet
+```
+Вариант 2 (требует уже готового master_clean):
 ```bash
-# ВАЖНО!: для датасета master_basic после всех join-ов. Для пояснения команд см. документацию preprocessing_cli.make_label
+# ВАЖНО!: для датасета master_clean после всех join-ов. Для пояснения команд см. документацию preprocessing_cli.make_label
 python src/olist_churn_prediction/preprocessing_cli.py label \
        --input-path data/interim/master_basic.parquet \
        --output-path data/processed/master_with_target.parquet \
@@ -305,7 +310,7 @@ python src/olist_churn_prediction/preprocessing_cli.py label \
        --filter-status-col order_status \
        --keep-statuses delivered
 ```
-Или добавьте после предобработки (пример в ноутбуке target_creation.ipynb):
+Вариант 3 (вручную в ноутбуке, пример в target_creation.ipynb):
 ```python
 import pandas as pd
 
@@ -324,7 +329,7 @@ df["churned"].fillna(0, inplace=True)  # при необходимости
 Часть, ответственная за создание baseline-датасета
 ```yaml
 # часть preprocessing_manifest.yaml
-colsets:
+colsets:  # какие колонки включать в baseline
   baseline: &baseline_cols
     - customer_state
     - seller_state

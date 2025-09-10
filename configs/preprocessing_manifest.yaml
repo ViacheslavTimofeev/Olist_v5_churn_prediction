@@ -253,7 +253,23 @@ datasets:
         how: any
     output: data/processed/cli_related/master_clean.parquet
 
-  # 9) Базовый датасет из «clean». 
+  # 9) Churned master dataset
+  - name: master_clean_churned  # исходный мастер после join/очистки:
+    input: data/processed/cli_related/master_clean.parquet
+
+    steps:
+      - op: make_label
+        customer_col: customer_id
+        purchase_ts_col: order_purchase_timestamp
+        target_col: churned
+        horizon_days: 120
+        reference_date: max             # или "2018-09-01"
+        filter_status_col: order_status
+        keep_statuses: [delivered]      # можно строкой "delivered, shipped"
+
+    output: data/processed/cli_related/master_clean_churned.parquet 
+
+  # 10) Базовый датасет из «clean». 
   - name: baseline_dataset
     input: data/processed/cli_related/master_clean_churned.parquet  # churned-датасет создается с помощью CLI
     steps:

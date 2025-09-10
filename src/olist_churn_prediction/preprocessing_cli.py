@@ -295,7 +295,31 @@ def _apply_steps(
                 X = X[[c for c in X.columns if c not in set(exclude)]]
             else:
                 typer.echo("   • select_columns: nothing to do (no include/exclude)")
-
+                
+        elif op == "make_label":  # параметры шага
+            customer_col = step.get("customer_col", "customer_id")
+            purchase_ts_col = step.get("purchase_ts_col", "order_purchase_timestamp")
+            target_col = step.get("target_col", "churned")
+            horizon_days = int(step.get("horizon_days", 120))
+            reference_date = step.get("reference_date", "max")  # "max" или "YYYY-MM-DD"
+            filter_status_col = step.get("filter_status_col", "order_status")
+        
+            ks = step.get("keep_statuses") # допускаем список или строку со статусами
+            if isinstance(ks, str):
+                ks = [s.strip() for s in ks.split(",")] if ks else None
+        
+            X = create_churn_label(
+                X,
+                customer_col=customer_col,
+                purchase_ts_col=purchase_ts_col,
+                target_col=target_col,
+                horizon_days=horizon_days,
+                reference_date=reference_date,
+                filter_status_col=filter_status_col,
+                keep_statuses=ks,
+                force=bool(step.get("force", False)),
+            )
+            
         elif op == "join":
             # Параметры:
             #  right: str (путь к файлу .csv/.parquet)
