@@ -22,7 +22,7 @@ Getting Started
    cd <ваш-репозиторий>
 
    # 2) Окружение (через conda)
-   conda create -n olist-ml python=3.13 -y
+   conda env create -f environment.yml
    conda activate olist-ml
 
    # 3) Установка пакета в editable-режиме
@@ -57,19 +57,25 @@ Getting Started
 
 .. code-block:: bash
 
-   python -m olist_churn_prediction.validator_cli validate-all --manifest configs/validation_manifest.yaml
+   python -m olist_churn_prediction.validator_cli validate-all configs/validation_manifest.yaml
 
-2) Предобработка (join/фичепроцессинг по YAML):
+2) Приведение к типам:
 
 .. code-block:: bash
 
-   python -m olist_churn_prediction.preprocessing_cli run --config configs/preprocessing.yaml
+   python -m olist_churn_prediction.types_cli cast-all configs/validation_manifest.yaml
+
+3) Предобработка (join/фичепроцессинг по YAML):
+
+.. code-block:: bash
+
+   python -m olist_churn_prediction.preprocessing_cli run configs/preprocessing.yaml
 
 3) Базовый эксперимент (кросс-валидация, логирование в MLflow):
 
 .. code-block:: bash
 
-   python -m olist_churn_prediction.baseline_cli cv --config configs/baseline.yaml
+   python -m olist_churn_prediction.baseline_cli cv configs/baseline.yaml
 
 .. note::
    Запуск через ``python -m ...`` решает типичные проблемы импорта, если файлы лежат в ``src/olist_churn_prediction``.
@@ -113,28 +119,8 @@ Getting Started
 
 Структура проекта
 -----------------
-.. code-block:: text
+Подробная структура по ссылке в README: https://github.com/ViacheslavTimofeev/Olist_v5_churn_prediction
 
-   .
-   ├─ configs/
-   │   ├─ baseline.yaml
-   ├─ data/
-   │   ├─ raw/
-   │   ├─ interim/
-   │   └─ processed/
-   ├─ docs/
-   │   ├─ conf.py
-   │   ├─ index.rst
-   │   └─ getting-started.rst   ← вы здесь
-   ├─ src/
-   │   └─ olist_churn_prediction/
-   │       ├─ __init__.py
-   │       ├─ validator_cli.py
-   │       ├─ preprocessing_cli.py
-   │       ├─ baseline_cli.py
-   │       └─ feature_processing.py
-   └─ validations/
-       └─ manifest.yaml
 
 Сборка документации
 -------------------
