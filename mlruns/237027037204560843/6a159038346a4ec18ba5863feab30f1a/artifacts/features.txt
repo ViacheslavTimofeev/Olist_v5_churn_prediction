@@ -1,1 +1,0 @@
-numeric_features (14): ['order_products_value', 'order_freight_value', 'order_items_qty', 'product_photos_qty', 'product_name_length', 'product_description_length', 'review_score', 'summary_payments_value', 'installments', 'sequential', 'product_weight_g', 'product_length_cm', 'product_height_cm', 'product_width_cm']categorical_features (2): ['customer_state', 'seller_state']

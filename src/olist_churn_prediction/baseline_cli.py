@@ -335,7 +335,7 @@ def build_pipeline(config: dict, df: Optional[pd.DataFrame] = None) -> Tuple[Pip
 # ------------------------------
 
 @app.command()
-def dry_run(config: str = typer.Option(..., help="Путь к YAML-конфигу")):
+def dry_run(config: Path = typer.Argument("configs/baseline.yaml")):
     """Быстрый прогон без обучения: показать конфиг, списки фич и метрики CV.
 
     Args:
@@ -361,7 +361,7 @@ def dry_run(config: str = typer.Option(..., help="Путь к YAML-конфиг�
 
 
 @app.command()
-def cv(config: str = typer.Option(..., help="Путь к YAML-конфигу")):
+def cv(config: Path = typer.Argument("configs/baseline.yaml")):
     """Запускает кросс-валидацию и сохраняет средние метрики.
 
     Читает датасет, собирает пайплайн, выполняет Stratified K-Fold CV и
@@ -427,7 +427,7 @@ def cv(config: str = typer.Option(..., help="Путь к YAML-конфигу")):
 
 @app.command()
 def fit(
-    config: str = typer.Option(..., help="Путь к YAML-конфигу"),
+    config: Path = typer.Argument("configs/baseline.yaml"),
     save_pipeline: bool = typer.Option(True, help="Сохранять pipeline.joblib"),
 ):
     """Обучает модель и сохраняет артефакты (метрики, предсказания, пайплайн).

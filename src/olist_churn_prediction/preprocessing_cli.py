@@ -389,11 +389,8 @@ def apply(
 
 
 @app.command()
-def run(manifest: str = typer.Option(
-    "configs/preprocessing_manifest.yaml",
-    "--manifest", "-m",
-    help="Путь к YAML-манифесту предобработки"
-    )
+def run(
+    manifest: Path = typer.Argument("configs/preprocessing_manifest.yaml")
 ) -> None:
     """Выполняет пакетную предобработку согласно YAML-манифесту.
 
