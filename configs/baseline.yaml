@@ -1,5 +1,5 @@
 # data & columns
-data_path: "data/processed/baseline_dataset.parquet"  # .csv тоже поддерживается
+data_path: "data/processed/baseline_dataset_static.parquet"  # .csv тоже поддерживается
 target: "churned"
 id_cols: []                     # допустимо пустое
 numeric_features: []            # опционально, оставить пустым чтобы инферить
@@ -16,7 +16,7 @@ model:
 # train & eval
 test_size: 0.2
 random_state: 42
-output_dir: "artifacts/baseline"
+output_dir: "artifacts/baseline_static"
 cv:
   n_splits: 5
 
@@ -24,7 +24,7 @@ cv:
 mlflow:
   enabled: true
   tracking_uri: "file:./mlruns"   # или http(s)://... для сервера
-  experiment: "olist_baseline_cli"
-  run_name: "baseline_rf"
+  experiment: "olist_baseline_static_cli"
+  run_name: "baseline_static_rf"
   autolog: true                  # в fit() включит mlflow.sklearn.autolog
   log_model: true                # логировать sklearn-пайплайн как модель

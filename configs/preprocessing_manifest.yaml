@@ -253,9 +253,9 @@ datasets:
         how: any
     output: data/processed/cli_related/master_clean.parquet
 
-  # 9) Churned master dataset
-  - name: master_clean_churned  # исходный мастер после join/очистки:
-    input: data/processed/cli_related/master_clean.parquet
+  # 9) Static churned master dataset
+  - name: master_clean_static_churned
+    input: data/processed/cli_related/master_clean.parquet # на вход очищенный master
 
     steps:
       - op: make_label
@@ -267,12 +267,18 @@ datasets:
         filter_status_col: order_status
         keep_statuses: [delivered]      # можно строкой "delivered, shipped"
 
-    output: data/processed/cli_related/master_clean_churned.parquet 
+    output: data/processed/cli_related/static_related/master_clean_static_churned.parquet
 
-  # 10) Базовый датасет из «clean». 
-  - name: baseline_dataset
-    input: data/processed/cli_related/master_clean_churned.parquet  # churned-датасет создается с помощью CLI
+  # 10) Резервное место для time series master clean churned dataset
+  #
+
+  # 11) Базовый static датасет из «clean».
+  - name: baseline_dataset_static
+    input: data/processed/cli_related/master_clean_static_churned.parquet
     steps:
       - op: select_columns
         include: *baseline_cols
-    output: data/processed/baseline_dataset.parquet
+    output: data/processed/baselines/baseline_dataset_static.parquet
+
+  # 12) Резервное место для time series baseline
+  #

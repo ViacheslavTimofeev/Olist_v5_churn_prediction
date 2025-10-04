@@ -171,25 +171,25 @@ options:
 Структура команд для запуска:
 ```bash
 # для одного
-python src/olist_churn_prediction/types_cli.py cast \
+python -m olist_churn_prediction.types_cli cast \
        <относительный путь к сырому датасету> \
        --schema <относительный путь к манифесту с типами> \
        --output <относительный путь для сохранения>
 
 # для всех сразу
-python src/olist_churn_prediction/types_cli.py cast-all \
+python -m olist_churn_prediction.types_cli cast-all \
        <относительный путь к манифесту валидации>
 ```
 Пример:
 ```bash
 # для одного
-python src/olist_churn_prediction/types_cli.py cast \
+python -m olist_churn_prediction.types_cli cast \
        data/raw/payments_olist_public_dataset.csv \
        --schema typed_schemas/payments_types.yaml \
        --output data/interim/cli_related/typed/payments_typed.parquet
 
 # для всех сразу
-python src/olist_churn_prediction/types_cli.py cast-all \
+python -m olist_churn_prediction.types_cli cast-all \
        configs/validation_manifest.yaml
 ```
 
@@ -281,6 +281,7 @@ datasets:
 
 Вариант 1 (default, на основе манифеста, детерминировано):
 ```yaml
+# часть preprocessing_manifest.yaml
 - name: master_clean_churned
     input: data/processed/cli_related/master_clean.parquet
 
@@ -367,8 +368,8 @@ log_model_artifact: false   # чтобы не сохранять тяжелый 
 ```
 Запуск CV/Train:
 ```bash
-python -m olist_churn_prediction.baseline_cli cv     --config configs/baseline.yaml
-python -m olist_churn_prediction.baseline_cli train  --config configs/baseline.yaml
+python -m olist_churn_prediction.baseline_cli cv --config configs/baseline.yaml
+python -m olist_churn_prediction.baseline_cli train --config configs/baseline.yaml
 ```
 
 ### 8) Трекинг экспериментов (MLflow)
