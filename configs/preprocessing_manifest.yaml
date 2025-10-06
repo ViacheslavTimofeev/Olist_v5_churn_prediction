@@ -2,7 +2,7 @@ defaults:
   sample: null         # можно поставить 0.1 для дебага, чтобы брать 10% строк
 
 colsets:
-  baseline: &baseline_cols
+  baseline_static: &baseline_static_cols
     - customer_state
     - seller_state
     - order_products_value
@@ -19,7 +19,25 @@ colsets:
     - product_length_cm
     - product_height_cm
     - product_width_cm
-    - churned 
+    - churned
+  baseline_time_series: &baseline_time_series_cols
+    - customer_state
+    - seller_state
+    - order_products_value
+    - order_freight_value
+    - order_items_qty
+    - product_photos_qty
+    - product_name_length
+    - product_description_length
+    - review_score
+    - summary_payments_value
+    - installments
+    - sequential
+    - product_weight_g
+    - product_length_cm
+    - product_height_cm
+    - product_width_cm
+    - churned
 
 datasets:
 # Примеры:
@@ -272,12 +290,12 @@ datasets:
   # 10) Резервное место для time series master clean churned dataset
   #
 
-  # 11) Базовый static датасет из «clean».
+  # 11) baseline static dataset из «clean».
   - name: baseline_dataset_static
-    input: data/processed/cli_related/master_clean_static_churned.parquet
+    input: data/processed/cli_related/static_related/master_clean_static_churned.parquet
     steps:
       - op: select_columns
-        include: *baseline_cols
+        include: *baseline_static_cols
     output: data/processed/baselines/baseline_dataset_static.parquet
 
   # 12) Резервное место для time series baseline

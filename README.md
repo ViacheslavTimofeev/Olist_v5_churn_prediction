@@ -238,13 +238,13 @@ datasets:
 ```bash
 # для всех сразу
 python -m olist_churn_prediction.preprocessing_cli run \
-       --manifest <относительный путь к манифесту препроцессинга>
+       <относительный путь к манифесту препроцессинга>
 ```
 Запуск:
 ```bash
 # для всех сразу
 python -m olist_churn_prediction.preprocessing_cli run \
-       --manifest configs/preprocessing_manifest.yaml
+       configs/preprocessing_manifest.yaml
 ```
 Объединение:
 ```yaml
